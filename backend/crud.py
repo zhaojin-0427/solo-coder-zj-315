@@ -93,9 +93,35 @@ def update_tea_plan(db: Session, plan_id: int, plan: schemas.TeaPlanUpdate):
     db_plan = get_tea_plan(db, plan_id)
     if not db_plan:
         return None
+    
     update_data = plan.model_dump(exclude_unset=True)
+    
+    if 'selected_items' in update_data and update_data['selected_items'] is not None:
+        db.query(models.RecommendedItem).filter(models.RecommendedItem.plan_id == plan_id).delete()
+        total_price = 0
+        for item in update_data['selected_items']:
+            utensil = get_utensil(db, item['utensil_id'])
+            if utensil:
+                db_rec_item = models.RecommendedItem(
+                    plan_id=plan_id,
+                    utensil_id=item['utensil_id'],
+                    quantity=item['quantity'],
+                    selected=item['selected']
+                )
+                db.add(db_rec_item)
+                if item['selected']:
+                    total_price += utensil.price * item['quantity']
+        
+        if 'total_price' not in update_data:
+            db_plan.total_price = total_price
+        else:
+            db_plan.total_price = update_data['total_price']
+        
+        del update_data['selected_items']
+    
     for key, value in update_data.items():
         setattr(db_plan, key, value)
+    
     db.commit()
     db.refresh(db_plan)
     return db_plan
@@ -104,6 +130,10 @@ def regenerate_recommendations(db: Session, plan_id: int):
     db_plan = get_tea_plan(db, plan_id)
     if not db_plan:
         return None
+    
+    prev_selections = {}
+    for item in db_plan.recommended_items:
+        prev_selections[item.utensil_id] = item.selected
     
     db.query(models.RecommendedItem).filter(models.RecommendedItem.plan_id == plan_id).delete()
     
@@ -125,14 +155,16 @@ def regenerate_recommendations(db: Session, plan_id: int):
         for rec in recommendations:
             utensil = rec["utensil"]
             quantity = rec["quantity"]
+            was_selected = prev_selections.get(utensil.id, False)
             db_rec_item = models.RecommendedItem(
                 plan_id=db_plan.id,
                 utensil_id=utensil.id,
                 quantity=quantity,
-                selected=True
+                selected=was_selected
             )
             db.add(db_rec_item)
-            total_price += utensil.price * quantity
+            if was_selected:
+                total_price += utensil.price * quantity
         
         db_plan.total_price = total_price
         db.commit()

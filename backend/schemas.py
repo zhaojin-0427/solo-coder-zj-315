@@ -123,6 +123,7 @@ class TeaPlanUpdate(BaseModel):
     customer_phone: Optional[str] = None
     status: Optional[str] = None
     total_price: Optional[float] = None
+    selected_items: Optional[List[SelectedItemCreate]] = None
 
     _validate_date = field_validator('date', mode='before')(parse_date)
 

@@ -61,7 +61,7 @@
       </el-table-column>
     </el-table>
 
-    <el-dialog v-model="showCreateDialog" title="创建茶席方案" width="900px" :close-on-click-modal="false">
+    <el-dialog v-model="showCreateDialog" title="创建茶席方案" width="900px" :close-on-click-modal="false" @close="onCreateDialogClose">
       <el-steps :active="createStep" align-center style="margin-bottom: 20px">
         <el-step title="基本信息" />
         <el-step title="预览推荐器物" />
@@ -229,7 +229,7 @@
       </div>
 
       <template #footer>
-        <el-button @click="showCreateDialog = false">取消</el-button>
+        <el-button @click="onCancelCreate">取消</el-button>
         <el-button v-if="createStep > 0" @click="createStep--">上一步</el-button>
         <el-button v-if="createStep === 0" type="primary" class="chinese-btn" @click="fetchPreview" :disabled="!canPreview">
           预览推荐器物
@@ -265,8 +265,14 @@
           <el-descriptions-item label="方案总价">¥{{ currentPlan.total_price }}</el-descriptions-item>
         </el-descriptions>
 
-        <h3 style="margin: 20px 0 10px">已选器物组合</h3>
-        <el-table :data="currentPlan.recommended_items.filter(i => i.selected)" border size="small" class="card-shadow">
+        <h3 style="margin: 20px 0 10px">推荐器物组合（可编辑选择）</h3>
+        <el-alert type="info" :closable="false" style="margin-bottom: 15px" v-if="isEditingPlan">
+          <template #title>
+            您可以勾选或取消勾选器物，修改后请点击"保存修改"按钮保存您的选择。
+          </template>
+        </el-alert>
+        <el-table :data="currentPlan.recommended_items" border size="small" class="card-shadow" @selection-change="handlePlanItemSelectionChange" ref="planItemsTable">
+          <el-table-column type="selection" width="50" />
           <el-table-column prop="utensil.category" label="器物分类" width="90" />
           <el-table-column prop="utensil.name" label="器物名称" width="160" />
           <el-table-column prop="utensil.color" label="颜色" width="90">
@@ -287,14 +293,34 @@
               <span style="color: #8B4513; font-weight: bold">¥{{ row.utensil.price * row.quantity }}</span>
             </template>
           </el-table-column>
+          <el-table-column label="状态" width="80" align="center">
+            <template #default="{ row }">
+              <el-tag :type="row.selected ? 'success' : 'info'" size="small">
+                {{ row.selected ? '已选' : '未选' }}
+              </el-tag>
+            </template>
+          </el-table-column>
         </el-table>
         <div style="margin-top: 10px; text-align: right; font-size: 16px; color: #8B4513">
-          总价: <b style="font-size: 20px">¥{{ currentPlan.total_price }}</b>
+          已选器物总价: <b style="font-size: 20px">¥{{ currentPlanTotalPrice }}</b>
+          <span v-if="isEditingPlan" style="margin-left: 20px; font-size: 14px; color: #999">
+            (原总价: ¥{{ currentPlan.total_price }})
+          </span>
         </div>
       </div>
       <template #footer>
-        <el-button @click="showDetailDialog = false">关闭</el-button>
-        <el-button type="primary" class="chinese-btn" @click="regenerateRecommend">
+        <el-button @click="onCloseDetail">关闭</el-button>
+        <el-button v-if="isEditingPlan" type="warning" @click="cancelEditPlan">
+          取消编辑
+        </el-button>
+        <el-button v-if="isEditingPlan" type="success" class="chinese-btn" @click="savePlanSelection">
+          保存修改
+        </el-button>
+        <el-button v-if="!isEditingPlan && currentPlan.status === 'draft'" type="primary" class="chinese-btn" @click="startEditPlan">
+          <el-icon><Edit /></el-icon>
+          编辑选择
+        </el-button>
+        <el-button v-if="currentPlan.status === 'draft'" type="primary" class="chinese-btn" @click="regenerateRecommend">
           <el-icon><Refresh /></el-icon>
           重新推荐
         </el-button>
@@ -320,8 +346,8 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
-import { Plus, Refresh, Loading } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Plus, Refresh, Loading, Edit } from '@element-plus/icons-vue'
 import { teaPlanApi, themeApi, borrowListApi, recommendApi } from '@/api'
 import { PHOTO_STYLES, TEA_CATEGORIES, COLORS } from '@/types'
 import type { TeaPlan, Theme, RecommendationItem } from '@/types'
@@ -339,6 +365,10 @@ const previewItems = ref<(RecommendationItem & { selected: boolean })[]>([])
 const previewLoading = ref(false)
 const previewTable = ref()
 const selectedPreviewRows = ref<(RecommendationItem & { selected: boolean })[]>([])
+const isEditingPlan = ref(false)
+const planItemsTable = ref()
+const selectedPlanItems = ref<any[]>([])
+const originalPlanItems = ref<any[]>([])
 
 const formData = ref({
   name: '',
@@ -381,6 +411,22 @@ const handlePreviewSelectionChange = (rows: any[]) => {
   })
 }
 
+const currentPlanTotalPrice = computed(() => {
+  if (!currentPlan.value) return 0
+  return currentPlan.value.recommended_items
+    .filter(i => i.selected)
+    .reduce((sum, item) => sum + item.utensil.price * item.quantity, 0)
+})
+
+const handlePlanItemSelectionChange = (rows: any[]) => {
+  selectedPlanItems.value = rows
+  if (currentPlan.value) {
+    currentPlan.value.recommended_items.forEach(item => {
+      item.selected = rows.includes(item)
+    })
+  }
+}
+
 const getColorHex = (color: string) => {
   const colorMap: Record<string, string> = {
     '朱红': '#CD5C5C', '赭石': '#A0522D', '胭脂': '#C71585', '琥珀': '#FFBF00',
@@ -416,10 +462,17 @@ const onThemeChange = (themeId: number) => {
 }
 
 const openCreateDialog = () => {
-  createStep.value = 0
-  previewItems.value = []
-  selectedPreviewRows.value = []
+  resetForm()
   showCreateDialog.value = true
+}
+
+const onCancelCreate = () => {
+  showCreateDialog.value = false
+  resetForm()
+}
+
+const onCreateDialogClose = () => {
+  resetForm()
 }
 
 const fetchPreview = async () => {
@@ -525,9 +578,88 @@ const viewPlan = async (row: TeaPlan) => {
   try {
     const res = await teaPlanApi.getOne(row.id)
     currentPlan.value = res.data
+    isEditingPlan.value = false
+    originalPlanItems.value = JSON.parse(JSON.stringify(res.data.recommended_items))
     showDetailDialog.value = true
+    setTimeout(() => {
+      syncPlanTableSelection()
+    }, 100)
   } catch (e) {
     ElMessage.error('加载详情失败')
+  }
+}
+
+const syncPlanTableSelection = () => {
+  if (planItemsTable.value && currentPlan.value) {
+    currentPlan.value.recommended_items.forEach(item => {
+      if (item.selected) {
+        planItemsTable.value.toggleRowSelection(item, true)
+      } else {
+        planItemsTable.value.toggleRowSelection(item, false)
+      }
+    })
+    selectedPlanItems.value = currentPlan.value.recommended_items.filter(i => i.selected)
+  }
+}
+
+const onCloseDetail = () => {
+  if (isEditingPlan.value) {
+    ElMessageBox.confirm(
+      '您正在编辑中，关闭后未保存的修改将丢失。确定要关闭吗？',
+      '确认关闭',
+      {
+        confirmButtonText: '确定关闭',
+        cancelButtonText: '继续编辑',
+        type: 'warning'
+      }
+    ).then(() => {
+      showDetailDialog.value = false
+      isEditingPlan.value = false
+    }).catch(() => {})
+  } else {
+    showDetailDialog.value = false
+  }
+}
+
+const startEditPlan = () => {
+  if (!currentPlan.value) return
+  originalPlanItems.value = JSON.parse(JSON.stringify(currentPlan.value.recommended_items))
+  isEditingPlan.value = true
+}
+
+const cancelEditPlan = () => {
+  if (!currentPlan.value) return
+  currentPlan.value.recommended_items = JSON.parse(JSON.stringify(originalPlanItems.value))
+  isEditingPlan.value = false
+  setTimeout(() => {
+    syncPlanTableSelection()
+  }, 100)
+}
+
+const savePlanSelection = async () => {
+  if (!currentPlan.value) return
+  try {
+    const selected_items = currentPlan.value.recommended_items.map(item => ({
+      utensil_id: item.utensil_id,
+      quantity: item.quantity,
+      selected: item.selected
+    }))
+    
+    const total_price = currentPlanTotalPrice.value
+    
+    await teaPlanApi.update(currentPlan.value.id, {
+      selected_items,
+      total_price
+    })
+    
+    const res = await teaPlanApi.getOne(currentPlan.value.id)
+    currentPlan.value = res.data
+    originalPlanItems.value = JSON.parse(JSON.stringify(res.data.recommended_items))
+    isEditingPlan.value = false
+    loadPlans()
+    ElMessage.success('已保存修改')
+  } catch (e) {
+    ElMessage.error('保存失败')
   }
 }
 
@@ -580,11 +712,24 @@ const createBorrowList = async () => {
 const regenerateRecommend = async () => {
   if (!currentPlan.value) return
   try {
+    await ElMessageBox.confirm(
+      '重新推荐将根据当前方案条件重新生成器物组合。\n\n注意：\n- 之前您勾选的器物会保持选中状态\n- 新增的推荐器物默认不会被选中\n- 您需要手动勾选需要的新器物\n\n确定要重新推荐吗？',
+      '重新确认推荐',
+      {
+        confirmButtonText: '确定重新推荐',
+        cancelButtonText: '取消',
+        type: 'warning',
+        dangerouslyUseHTMLString: false
+      }
+    )
+    
     const res = await teaPlanApi.regenerate(currentPlan.value.id)
     currentPlan.value = res.data
-    ElMessage.success('已重新推荐')
-  } catch (e) {
-    ElMessage.error('重新推荐失败')
+    ElMessage.success('已重新推荐，请检查并勾选需要的器物')
+  } catch (e: any) {
+    if (e !== 'cancel') {
+      ElMessage.error('重新推荐失败')
+    }
   }
 }
 
