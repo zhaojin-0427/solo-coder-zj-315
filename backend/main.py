@@ -199,13 +199,6 @@ def read_reservations(
         tea_category=tea_category, theme_color=theme_color
     )
 
-@app.get("/api/reservations/{reservation_id}", response_model=schemas.Reservation, tags=["预约管理"])
-def read_reservation(reservation_id: int, db: Session = Depends(get_db)):
-    db_reservation = crud.get_reservation(db, reservation_id=reservation_id)
-    if db_reservation is None:
-        raise HTTPException(status_code=404, detail="Reservation not found")
-    return db_reservation
-
 @app.get("/api/reservations/check-conflict", response_model=schemas.ConflictCheckResponse, tags=["预约管理"])
 def check_reservation_conflict(
     check_date: str,
@@ -228,6 +221,13 @@ def check_reservation_conflict(
         "has_conflict": len(conflicts) > 0,
         "conflicts": serializable_conflicts
     }
+
+@app.get("/api/reservations/{reservation_id}", response_model=schemas.Reservation, tags=["预约管理"])
+def read_reservation(reservation_id: int, db: Session = Depends(get_db)):
+    db_reservation = crud.get_reservation(db, reservation_id=reservation_id)
+    if db_reservation is None:
+        raise HTTPException(status_code=404, detail="Reservation not found")
+    return db_reservation
 
 @app.post("/api/reservations", response_model=schemas.Reservation, tags=["预约管理"])
 def create_reservation(reservation: schemas.ReservationCreate, db: Session = Depends(get_db)):

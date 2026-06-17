@@ -447,7 +447,7 @@ def check_conflict(db: Session, check_date: date, time_slot: str, exclude_reserv
     
     reservation_conflicts = db.query(models.Reservation).filter(
         models.Reservation.expected_date == check_date,
-        models.Reservation.status.in_(["confirmed"]))
+        models.Reservation.status.in_(["pending", "confirmed"]))
     
     if exclude_reservation_id:
         reservation_conflicts = reservation_conflicts.filter(models.Reservation.id != exclude_reservation_id)

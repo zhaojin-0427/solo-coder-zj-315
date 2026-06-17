@@ -329,7 +329,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Refresh, Calendar, List, ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
 import { reservationApi, themeApi } from '@/api'
@@ -514,10 +514,16 @@ const resetFilters = () => {
 }
 
 const checkConflict = async () => {
-  if (!formData.value.expected_date || !formData.value.time_slot) return
+  if (!formData.value.expected_date || !formData.value.time_slot) {
+    conflictResult.value = null
+    return
+  }
   try {
+    const dateStr = formData.value.expected_date instanceof Date
+      ? formatDate(formData.value.expected_date)
+      : formData.value.expected_date
     const res = await reservationApi.checkConflict({
-      check_date: formData.value.expected_date,
+      check_date: dateStr,
       time_slot: formData.value.time_slot,
       exclude_reservation_id: isEditing.value ? editingId.value : undefined
     })
@@ -546,6 +552,9 @@ const openCreateDialog = (date?: string | Event) => {
     status: 'pending'
   }
   showFormDialog.value = true
+  if (parsedDate) {
+    setTimeout(() => checkConflict(), 100)
+  }
 }
 
 const editReservation = (row: Reservation) => {
@@ -567,6 +576,7 @@ const editReservation = (row: Reservation) => {
   }
   showDetailDialog.value = false
   showFormDialog.value = true
+  setTimeout(() => checkConflict(), 100)
 }
 
 const viewReservation = async (row: Reservation) => {
@@ -587,21 +597,38 @@ const saveReservation = async () => {
     return
   }
   try {
+    const dateStr = formData.value.expected_date instanceof Date
+      ? formatDate(formData.value.expected_date)
+      : formData.value.expected_date
+    const submitData = {
+      ...formData.value,
+      expected_date: dateStr
+    }
     if (isEditing.value) {
-      await reservationApi.update(editingId.value, formData.value)
+      await reservationApi.update(editingId.value, submitData)
       ElMessage.success('预约修改成功')
     } else {
-      await reservationApi.create(formData.value)
+      await reservationApi.create(submitData)
       ElMessage.success('预约创建成功')
     }
     showFormDialog.value = false
     loadReservations()
   } catch (e: any) {
     if (e?.response?.status === 409) {
-      conflictResult.value = e.response.data.detail.conflicts
-        ? { has_conflict: true, conflicts: e.response.data.detail.conflicts }
-        : { has_conflict: true, conflicts: [] }
-      ElMessage.error(e.response.data.detail?.message || '时段冲突，无法保存')
+      const detail = e.response.data?.detail
+      if (detail && typeof detail === 'object' && detail.conflicts) {
+        conflictResult.value = {
+          has_conflict: true,
+          conflicts: detail.conflicts
+        }
+        const conflictMsgs = detail.conflicts.map((c: any) =>
+          `[${c.time_slot}] ${c.type === 'plan' ? '茶席方案' : '预约'}: ${c.name} (${c.customer_name || ''})`
+        ).join('\n')
+        ElMessage.error(`${detail.message || '时段冲突，无法保存'}\n${conflictMsgs}`)
+      } else {
+        conflictResult.value = { has_conflict: true, conflicts: [] }
+        ElMessage.error('时段冲突，无法保存')
+      }
     } else {
       ElMessage.error(isEditing.value ? '修改失败' : '创建失败')
     }
@@ -709,6 +736,16 @@ onMounted(() => {
   loadReservations()
   loadThemes()
 })
+
+watch(
+  () => [formData.value.expected_date, formData.value.time_slot, showFormDialog.value],
+  ([newDate, newSlot, dialogOpen]) => {
+    if (dialogOpen && newDate && newSlot) {
+      checkConflict()
+    }
+  },
+  { deep: true }
+)
 </script>
 
 <style scoped>
