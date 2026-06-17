@@ -1,0 +1,132 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  background: linear-gradient(135deg, #f5f0e8 0%, #e8dcc8 100%);
+  min-height: 100vh;
+}
+
+#app {
+  min-height: 100vh;
+}
+
+.app-container {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.main-content {
+  flex: 1;
+  padding: 20px;
+}
+
+.chinese-header {
+  background: linear-gradient(90deg, #8B4513 0%, #A0522D 50%, #8B4513 100%);
+  padding: 15px 30px;
+  color: #f5deb3;
+  box-shadow: 0 2px 10px rgba(139, 69, 19, 0.3);
+}
+
+.chinese-header h1 {
+  font-size: 24px;
+  font-weight: 500;
+  letter-spacing: 4px;
+}
+
+.el-menu {
+  background: transparent !important;
+  border-bottom: none !important;
+}
+
+.el-menu-item {
+  color: #f5deb3 !important;
+}
+
+.el-menu-item.is-active {
+  background: rgba(245, 222, 179, 0.2) !important;
+}
+
+.card-shadow {
+  box-shadow: 0 4px 20px rgba(139, 69, 19, 0.1);
+  border: 1px solid #d4c4a8;
+  background: #fffaf0;
+}
+
+.chinese-btn {
+  background: linear-gradient(135deg, #8B4513 0%, #A0522D 100%);
+  border: none;
+  color: #f5deb3;
+}
+
+.chinese-btn:hover {
+  background: linear-gradient(135deg, #A0522D 0%, #CD853F 100%);
+}
+
+.stat-card {
+  background: linear-gradient(135deg, #fffaf0 0%, #f5e6d3 100%);
+  border-radius: 8px;
+  padding: 20px;
+  text-align: center;
+  border: 1px solid #d4c4a8;
+}
+
+.stat-card .value {
+  font-size: 32px;
+  font-weight: bold;
+  color: #8B4513;
+  margin: 10px 0;
+}
+
+.stat-card .label {
+  color: #8B7355;
+  font-size: 14px;
+}
+
+.theme-tag {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #fff;
+}
+
+.utensil-card {
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+
+.utensil-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 8px 25px rgba(139, 69, 19, 0.2);
+}
+
+.status-badge {
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+}
+
+.status-draft {
+  background: #e8e8e8;
+  color: #666;
+}
+
+.status-confirmed {
+  background: #d4edda;
+  color: #155724;
+}
+
+.status-borrowing {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.status-completed {
+  background: #cce5ff;
+  color: #004085;
+}
