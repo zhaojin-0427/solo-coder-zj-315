@@ -5,7 +5,13 @@ const router = createRouter({
   routes: [
     {
       path: '/',
-      redirect: '/tea-plans'
+      redirect: '/reservations'
+    },
+    {
+      path: '/reservations',
+      name: 'Reservations',
+      component: () => import('@/views/Reservations.vue'),
+      meta: { title: '预约排期' }
     },
     {
       path: '/tea-plans',

@@ -180,9 +180,188 @@ def update_review_item(item_id: int, item: schemas.ReviewItemUpdate, db: Session
         raise HTTPException(status_code=404, detail="Review item not found")
     return db_item
 
+@app.get("/api/reservations", response_model=List[schemas.Reservation], tags=["预约管理"])
+def read_reservations(
+    skip: int = 0, 
+    limit: int = 100, 
+    status: str = None,
+    start_date: str = None,
+    end_date: str = None,
+    tea_category: str = None,
+    theme_color: str = None,
+    db: Session = Depends(get_db)
+):
+    parsed_start = parse_date(start_date) if start_date else None
+    parsed_end = parse_date(end_date) if end_date else None
+    return crud.get_reservations(
+        db, skip=skip, limit=limit, status=status,
+        start_date=parsed_start, end_date=parsed_end,
+        tea_category=tea_category, theme_color=theme_color
+    )
+
+@app.get("/api/reservations/{reservation_id}", response_model=schemas.Reservation, tags=["预约管理"])
+def read_reservation(reservation_id: int, db: Session = Depends(get_db)):
+    db_reservation = crud.get_reservation(db, reservation_id=reservation_id)
+    if db_reservation is None:
+        raise HTTPException(status_code=404, detail="Reservation not found")
+    return db_reservation
+
+@app.get("/api/reservations/check-conflict", response_model=schemas.ConflictCheckResponse, tags=["预约管理"])
+def check_reservation_conflict(
+    check_date: str,
+    time_slot: str,
+    exclude_reservation_id: int = None,
+    exclude_plan_id: int = None,
+    db: Session = Depends(get_db)
+):
+    parsed_date = parse_date(check_date)
+    conflicts = crud.check_conflict(
+        db, check_date=parsed_date, time_slot=time_slot,
+        exclude_reservation_id=exclude_reservation_id, exclude_plan_id=exclude_plan_id
+    )
+    serializable_conflicts = []
+    for c in conflicts:
+        c_dict = dict(c)
+        c_dict['date'] = str(c_dict['date'])
+        serializable_conflicts.append(c_dict)
+    return {
+        "has_conflict": len(conflicts) > 0,
+        "conflicts": serializable_conflicts
+    }
+
+@app.post("/api/reservations", response_model=schemas.Reservation, tags=["预约管理"])
+def create_reservation(reservation: schemas.ReservationCreate, db: Session = Depends(get_db)):
+    conflicts = crud.check_conflict(
+        db, check_date=reservation.expected_date, time_slot=reservation.time_slot
+    )
+    if len(conflicts) > 0:
+        serializable_conflicts = []
+        for c in conflicts:
+            c_dict = dict(c)
+            c_dict['date'] = str(c_dict['date'])
+            serializable_conflicts.append(c_dict)
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "该日期时段已有活动安排，请选择其他时段",
+                "conflicts": serializable_conflicts
+            }
+        )
+    return crud.create_reservation(db=db, reservation=reservation)
+
+@app.put("/api/reservations/{reservation_id}", response_model=schemas.Reservation, tags=["预约管理"])
+def update_reservation(reservation_id: int, reservation: schemas.ReservationUpdate, db: Session = Depends(get_db)):
+    db_reservation = crud.get_reservation(db, reservation_id=reservation_id)
+    if db_reservation is None:
+        raise HTTPException(status_code=404, detail="Reservation not found")
+    
+    check_date = reservation.expected_date or db_reservation.expected_date
+    check_time_slot = reservation.time_slot or db_reservation.time_slot
+    
+    if reservation.expected_date is not None or reservation.time_slot is not None:
+        conflicts = crud.check_conflict(
+            db, check_date=check_date, time_slot=check_time_slot,
+            exclude_reservation_id=reservation_id
+        )
+        if len(conflicts) > 0:
+            serializable_conflicts = []
+            for c in conflicts:
+                c_dict = dict(c)
+                c_dict['date'] = str(c_dict['date'])
+                serializable_conflicts.append(c_dict)
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "message": "该日期时段已有活动安排，请选择其他时段",
+                    "conflicts": serializable_conflicts
+                }
+            )
+    
+    return crud.update_reservation(db, reservation_id=reservation_id, reservation=reservation)
+
+@app.post("/api/reservations/{reservation_id}/confirm", response_model=schemas.Reservation, tags=["预约管理"])
+def confirm_reservation(reservation_id: int, db: Session = Depends(get_db)):
+    db_reservation = crud.get_reservation(db, reservation_id=reservation_id)
+    if db_reservation is None:
+        raise HTTPException(status_code=404, detail="Reservation not found")
+    
+    conflicts = crud.check_conflict(
+        db, check_date=db_reservation.expected_date, time_slot=db_reservation.time_slot,
+        exclude_reservation_id=reservation_id
+    )
+    if len(conflicts) > 0:
+        serializable_conflicts = []
+        for c in conflicts:
+            c_dict = dict(c)
+            c_dict['date'] = str(c_dict['date'])
+            serializable_conflicts.append(c_dict)
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "该日期时段已有活动安排，无法确认预约",
+                "conflicts": serializable_conflicts
+            }
+        )
+    
+    return crud.update_reservation(
+        db, reservation_id=reservation_id,
+        reservation=schemas.ReservationUpdate(status="confirmed")
+    )
+
+@app.post("/api/reservations/{reservation_id}/cancel", response_model=schemas.Reservation, tags=["预约管理"])
+def cancel_reservation(reservation_id: int, db: Session = Depends(get_db)):
+    db_reservation = crud.get_reservation(db, reservation_id=reservation_id)
+    if db_reservation is None:
+        raise HTTPException(status_code=404, detail="Reservation not found")
+    return crud.update_reservation(
+        db, reservation_id=reservation_id,
+        reservation=schemas.ReservationUpdate(status="cancelled")
+    )
+
+@app.post("/api/reservations/{reservation_id}/convert", response_model=schemas.TeaPlan, tags=["预约管理"])
+def convert_reservation_to_plan(
+    reservation_id: int,
+    convert_request: schemas.ConvertToPlanRequest,
+    db: Session = Depends(get_db)
+):
+    db_reservation = crud.get_reservation(db, reservation_id=reservation_id)
+    if db_reservation is None:
+        raise HTTPException(status_code=404, detail="Reservation not found")
+    
+    if db_reservation.status != "confirmed":
+        raise HTTPException(
+            status_code=400,
+            detail="只有已确认的预约才能转化为茶席方案"
+        )
+    
+    db_plan = crud.convert_reservation_to_plan(
+        db, reservation_id=reservation_id, convert_request=convert_request
+    )
+    if db_plan is None:
+        raise HTTPException(status_code=500, detail="转化失败")
+    return db_plan
+
 @app.get("/api/statistics", response_model=schemas.StatisticsResponse, tags=["数据统计"])
 def get_statistics(db: Session = Depends(get_db)):
     return crud.get_statistics(db)
+
+def parse_date(v):
+    if v is None:
+        return None
+    from datetime import date, datetime
+    import re
+    if isinstance(v, date):
+        return v
+    if isinstance(v, datetime):
+        return v.date()
+    if isinstance(v, str):
+        if re.match(r'^\d{4}-\d{2}-\d{2}$', v):
+            return date.fromisoformat(v)
+        try:
+            return datetime.fromisoformat(v.replace('Z', '+00:00')).date()
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"无法解析日期: {v}")
+    raise HTTPException(status_code=400, detail=f"无法解析日期: {v}")
 
 if __name__ == "__main__":
     import uvicorn

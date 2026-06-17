@@ -362,6 +362,8 @@ def get_statistics(db: Session):
     total_revenue = db.query(func.sum(models.TeaPlan.total_price)).scalar() or 0
     avg_rating = db.query(func.avg(models.ActivityReview.rating)).scalar() or 0
     
+    reservation_stats = get_reservation_statistics(db)
+    
     return {
         "theme_stats": [{"theme_name": t, "count": c} for t, c in theme_stats],
         "utensil_usage_stats": [{"utensil_name": n, "category": c, "usage_count": u} for n, c, u in utensil_usage],
@@ -372,7 +374,8 @@ def get_statistics(db: Session):
         "tea_category_reservation_stats": [{"tea_category": t, "count": n} for t, n in tea_category_reservation_stats],
         "total_orders": total_orders,
         "total_revenue": float(total_revenue),
-        "avg_rating": float(avg_rating)
+        "avg_rating": float(avg_rating),
+        "reservation_stats": reservation_stats
     }
 
 def init_sample_data(db: Session):
@@ -418,3 +421,196 @@ def init_sample_data(db: Session):
         db.add_all(utensils)
     
     db.commit()
+
+def check_conflict(db: Session, check_date: date, time_slot: str, exclude_reservation_id: int = None, exclude_plan_id: int = None):
+    conflicts = []
+    
+    plan_conflicts = db.query(models.TeaPlan).filter(
+        models.TeaPlan.date == check_date,
+        models.TeaPlan.status.in_(["confirmed", "borrowing", "completed"]))
+    
+    if exclude_plan_id:
+        plan_conflicts = plan_conflicts.filter(models.TeaPlan.id != exclude_plan_id)
+    
+    plan_conflicts = plan_conflicts.all()
+    
+    for plan in plan_conflicts:
+        if plan.time_slot == "全天" or time_slot == "全天" or plan.time_slot == time_slot:
+            conflicts.append({
+                "date": plan.date,
+                "time_slot": plan.time_slot,
+                "type": "plan",
+                "id": plan.id,
+                "name": plan.name,
+                "customer_name": plan.customer_name
+            })
+    
+    reservation_conflicts = db.query(models.Reservation).filter(
+        models.Reservation.expected_date == check_date,
+        models.Reservation.status.in_(["confirmed"]))
+    
+    if exclude_reservation_id:
+        reservation_conflicts = reservation_conflicts.filter(models.Reservation.id != exclude_reservation_id)
+    
+    reservation_conflicts = reservation_conflicts.all()
+    
+    for res in reservation_conflicts:
+        if res.time_slot == "全天" or time_slot == "全天" or res.time_slot == time_slot:
+            conflicts.append({
+                "date": res.expected_date,
+                "time_slot": res.time_slot,
+                "type": "reservation",
+                "id": res.id,
+                "name": f"客户预约-{res.customer_name}",
+                "customer_name": res.customer_name
+            })
+    
+    return conflicts
+
+def get_reservations(db: Session, skip: int = 0, limit: int = 100, status: str = None, 
+                    start_date: date = None, end_date: date = None,
+                    tea_category: str = None, theme_color: str = None):
+    query = db.query(models.Reservation)
+    if status:
+        query = query.filter(models.Reservation.status == status)
+    if start_date:
+        query = query.filter(models.Reservation.expected_date >= start_date)
+    if end_date:
+        query = query.filter(models.Reservation.expected_date <= end_date)
+    if tea_category:
+        query = query.filter(models.Reservation.preferred_tea == tea_category)
+    if theme_color:
+        query = query.filter(models.Reservation.preferred_color == theme_color)
+    return query.order_by(models.Reservation.expected_date.desc()).offset(skip).limit(limit).all()
+
+def get_reservation(db: Session, reservation_id: int):
+    return db.query(models.Reservation).filter(models.Reservation.id == reservation_id).first()
+
+def create_reservation(db: Session, reservation: schemas.ReservationCreate):
+    db_reservation = models.Reservation(**reservation.model_dump())
+    db.add(db_reservation)
+    db.commit()
+    db.refresh(db_reservation)
+    return db_reservation
+
+def update_reservation(db: Session, reservation_id: int, reservation: schemas.ReservationUpdate):
+    db_reservation = get_reservation(db, reservation_id)
+    if not db_reservation:
+        return None
+    update_data = reservation.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(db_reservation, key, value)
+    db.commit()
+    db.refresh(db_reservation)
+    return db_reservation
+
+def convert_reservation_to_plan(db: Session, reservation_id: int, convert_request: schemas.ConvertToPlanRequest):
+    db_reservation = get_reservation(db, reservation_id)
+    if not db_reservation:
+        return None
+    
+    theme = get_theme(db, convert_request.theme_id)
+    theme_color = db_reservation.preferred_color or (theme.color if theme else None)
+    tea_category = db_reservation.preferred_tea or (theme.tea_category if theme else None)
+    photo_style = db_reservation.photo_style or (theme.style if theme else None)
+    
+    plan_data = schemas.TeaPlanCreate(
+        theme_id=convert_request.theme_id,
+        name=convert_request.name,
+        date=db_reservation.expected_date,
+        time_slot=db_reservation.time_slot,
+        people_count=db_reservation.people_count,
+        budget=db_reservation.budget,
+        photo_style=photo_style,
+        theme_color=theme_color,
+        tea_category=tea_category,
+        customer_name=db_reservation.customer_name,
+        customer_phone=db_reservation.customer_phone,
+        status="draft",
+        selected_items=[]
+    )
+    
+    db_plan = models.TeaPlan(
+        **plan_data.model_dump(exclude={'selected_items'}),
+        reservation_id=reservation_id
+    )
+    db.add(db_plan)
+    db.commit()
+    db.refresh(db_plan)
+    
+    if theme_color and tea_category:
+        recommendations = recommend_utensils(
+            db, theme_color, tea_category,
+            db_plan.people_count, db_plan.budget, db_plan.photo_style
+        )
+        
+        total_price = 0
+        for rec in recommendations:
+            utensil = rec["utensil"]
+            quantity = rec["quantity"]
+            db_rec_item = models.RecommendedItem(
+                plan_id=db_plan.id,
+                utensil_id=utensil.id,
+                quantity=quantity,
+                selected=True
+            )
+            db.add(db_rec_item)
+            total_price += utensil.price * quantity
+        
+        db_plan.total_price = total_price
+        db.commit()
+        db.refresh(db_plan)
+    
+    db_reservation.status = "converted"
+    db.commit()
+    db.refresh(db_reservation)
+    
+    return db_plan
+
+def get_reservation_statistics(db: Session):
+    total_reservations = db.query(models.Reservation).count()
+    confirmed_reservations = db.query(models.Reservation).filter(
+        models.Reservation.status.in_(["confirmed", "converted"])).count()
+    cancelled_reservations = db.query(models.Reservation).filter(
+        models.Reservation.status == "cancelled").count()
+    converted_plans = db.query(models.TeaPlan).filter(
+        models.TeaPlan.reservation_id.isnot(None)).count()
+    
+    conversion_rate = 0.0
+    if total_reservations > 0:
+        conversion_rate = round(converted_plans / total_reservations * 100, 2)
+    
+    time_slot_stats = db.query(
+        models.Reservation.time_slot,
+        func.count(models.Reservation.id).label("count")
+    ).filter(models.Reservation.status != "cancelled") \
+     .group_by(models.Reservation.time_slot).all()
+    
+    popular_tea_stats = db.query(
+        models.Reservation.preferred_tea.label("tea_category"),
+        func.count(models.Reservation.id).label("count")
+    ).filter(models.Reservation.preferred_tea.isnot(None), 
+             models.Reservation.preferred_tea != '',
+             models.Reservation.status != "cancelled") \
+     .group_by(models.Reservation.preferred_tea) \
+     .order_by(func.count(models.Reservation.id).desc()).limit(5).all()
+    
+    popular_color_stats = db.query(
+        models.Reservation.preferred_color.label("theme_color"),
+        func.count(models.Reservation.id).label("count")
+    ).filter(models.Reservation.preferred_color.isnot(None), 
+             models.Reservation.preferred_color != '',
+             models.Reservation.status != "cancelled") \
+     .group_by(models.Reservation.preferred_color) \
+     .order_by(func.count(models.Reservation.id).desc()).limit(5).all()
+    
+    return {
+        "conversion_rate": conversion_rate,
+        "total_reservations": total_reservations,
+        "confirmed_reservations": confirmed_reservations,
+        "converted_plans": converted_plans,
+        "cancelled_reservations": cancelled_reservations,
+        "time_slot_stats": [{"time_slot": t, "count": c} for t, c in time_slot_stats],
+        "popular_tea_stats": [{"tea_category": t, "count": c} for t, c in popular_tea_stats],
+        "popular_color_stats": [{"theme_color": c, "count": n} for c, n in popular_color_stats]
+    }

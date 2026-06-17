@@ -9,6 +9,10 @@
           :default-active="$route.path"
           class="nav-menu"
         >
+          <el-menu-item index="/reservations">
+            <el-icon><Calendar /></el-icon>
+            预约排期
+          </el-menu-item>
           <el-menu-item index="/tea-plans">
             <el-icon><Document /></el-icon>
             主题方案
@@ -39,7 +43,7 @@
 </template>
 
 <script setup lang="ts">
-import { Document, Collection, List, EditPen, DataAnalysis } from '@element-plus/icons-vue'
+import { Calendar, Document, Collection, List, EditPen, DataAnalysis } from '@element-plus/icons-vue'
 </script>
 
 <style scoped>

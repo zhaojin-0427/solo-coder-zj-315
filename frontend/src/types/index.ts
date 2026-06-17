@@ -38,6 +38,7 @@ export interface TeaPlan {
   theme_id: number
   name: string
   date: string
+  time_slot: string
   people_count: number
   budget: number
   photo_style: string
@@ -47,6 +48,7 @@ export interface TeaPlan {
   customer_name: string
   customer_phone: string
   total_price: number
+  reservation_id?: number
   theme?: Theme
   recommended_items: RecommendedItem[]
 }
@@ -128,6 +130,7 @@ export interface StatisticsResponse {
   total_orders: number
   total_revenue: number
   avg_rating: number
+  reservation_stats: ReservationStatsResponse
 }
 
 export interface ColorReservationStats {
@@ -153,9 +156,57 @@ export interface SelectedItem {
   selected: boolean
 }
 
+export interface Reservation {
+  id: number
+  customer_name: string
+  customer_phone: string
+  expected_date: string
+  time_slot: string
+  people_count: number
+  budget: number
+  preferred_color?: string
+  preferred_tea?: string
+  photo_style?: string
+  remark?: string
+  status: string
+  plans: TeaPlan[]
+}
+
+export interface ConflictInfo {
+  date: string
+  time_slot: string
+  type: string
+  id: number
+  name: string
+  customer_name: string
+}
+
+export interface ConflictCheckResponse {
+  has_conflict: boolean
+  conflicts: ConflictInfo[]
+}
+
+export interface TimeSlotStats {
+  time_slot: string
+  count: number
+}
+
+export interface ReservationStatsResponse {
+  conversion_rate: number
+  total_reservations: number
+  confirmed_reservations: number
+  converted_plans: number
+  cancelled_reservations: number
+  time_slot_stats: TimeSlotStats[]
+  popular_tea_stats: TeaCategoryReservationStats[]
+  popular_color_stats: ColorReservationStats[]
+}
+
 export const TEA_CATEGORIES = ['绿茶', '红茶', '乌龙茶', '普洱茶', '白茶', '黄茶']
 export const PHOTO_STYLES = ['宋韵古风', '禅意极简', '文人雅集', '现代新中式', '自然山野']
 export const UTENSIL_CATEGORIES = ['盖碗', '茶海', '杯盏', '席布', '花器']
 export const MATERIALS = ['青瓷', '白瓷', '紫砂', '朱泥', '玻璃', '粗陶', '棉麻', '竹编', '织锦', '铜器']
 export const COLORS = ['朱红', '赭石', '胭脂', '琥珀', '金黄', '橙黄', '青色', '湖蓝', '黛绿', '松石', '月白', '藏青', '米白', '象牙', '玄黑', '紫砂', '灰墨', '素白']
 export const PLAN_STATUS = ['draft', 'confirmed', 'borrowing', 'completed']
+export const TIME_SLOTS = ['上午', '下午', '晚上', '全天']
+export const RESERVATION_STATUS = ['pending', 'confirmed', 'cancelled', 'converted']

@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { Theme, Utensil, TeaPlan, BorrowList, ActivityReview, StatisticsResponse, SelectedItem } from '@/types'
+import type { Theme, Utensil, TeaPlan, BorrowList, ActivityReview, StatisticsResponse, SelectedItem, Reservation, ConflictCheckResponse } from '@/types'
 
 const api = axios.create({
   baseURL: '/api',
@@ -87,6 +87,21 @@ export const statsApi = {
 export const recommendApi = {
   getRecommendation: (data: { theme_color: string; tea_category: string; people_count: number; budget: number; photo_style: string }) =>
     api.post('/recommend', data)
+}
+
+export const reservationApi = {
+  getAll: (params?: {
+    status?: string; start_date?: string; end_date?: string; tea_category?: string; theme_color?: string }) =>
+    api.get<Reservation[]>('/reservations', { params }),
+  getOne: (id: number) => api.get<Reservation>(`/reservations/${id}`),
+  checkConflict: (params: { check_date: string; time_slot: string; exclude_reservation_id?: number; exclude_plan_id?: number }) =>
+    api.get<ConflictCheckResponse>('/reservations/check-conflict', { params }),
+  create: (data: Omit<Reservation, 'id' | 'plans'>) => api.post<Reservation>('/reservations', data),
+  update: (id: number, data: Partial<Omit<Reservation, 'id' | 'plans'>>) => api.put<Reservation>(`/reservations/${id}`, data),
+  confirm: (id: number) => api.post<Reservation>(`/reservations/${id}/confirm`),
+  cancel: (id: number) => api.post<Reservation>(`/reservations/${id}/cancel`),
+  convert: (id: number, data: { theme_id: number; name: string }) =>
+    api.post<TeaPlan>(`/reservations/${id}/convert`, data)
 }
 
 export default api

@@ -43,6 +43,7 @@ class TeaPlan(Base):
     theme_id = Column(Integer, ForeignKey("themes.id"))
     name = Column(String(100))
     date = Column(Date)
+    time_slot = Column(String(20), default="全天")
     people_count = Column(Integer)
     budget = Column(Float)
     photo_style = Column(String(50))
@@ -52,11 +53,13 @@ class TeaPlan(Base):
     customer_name = Column(String(100))
     customer_phone = Column(String(20))
     total_price = Column(Float, default=0)
+    reservation_id = Column(Integer, ForeignKey("reservations.id"), nullable=True)
     
     theme = relationship("Theme", back_populates="plans")
     borrow_list = relationship("BorrowList", back_populates="plan", uselist=False)
     review = relationship("ActivityReview", back_populates="plan", uselist=False)
     recommended_items = relationship("RecommendedItem", back_populates="plan")
+    reservation = relationship("Reservation", back_populates="plans", foreign_keys=[reservation_id])
 
 class RecommendedItem(Base):
     __tablename__ = "recommended_items"
@@ -120,3 +123,21 @@ class ReviewItem(Base):
     
     review = relationship("ActivityReview", back_populates="items")
     utensil = relationship("Utensil", back_populates="review_items")
+
+class Reservation(Base):
+    __tablename__ = "reservations"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    customer_name = Column(String(100), nullable=False)
+    customer_phone = Column(String(20), nullable=False)
+    expected_date = Column(Date, nullable=False)
+    time_slot = Column(String(20), nullable=False, default="全天")
+    people_count = Column(Integer, nullable=False, default=1)
+    budget = Column(Float, nullable=False, default=0)
+    preferred_color = Column(String(50))
+    preferred_tea = Column(String(50))
+    photo_style = Column(String(50))
+    remark = Column(Text)
+    status = Column(String(20), default="pending")
+    
+    plans = relationship("TeaPlan", back_populates="reservation", foreign_keys="TeaPlan.reservation_id")

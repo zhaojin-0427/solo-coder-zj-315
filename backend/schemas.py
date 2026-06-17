@@ -96,6 +96,7 @@ class TeaPlanBase(BaseModel):
     theme_id: int
     name: str
     date: date
+    time_slot: str = "全天"
     people_count: int
     budget: float
     photo_style: str
@@ -267,6 +268,76 @@ class TeaCategoryReservationStats(BaseModel):
     tea_category: str
     count: int
 
+class ReservationBase(BaseModel):
+    customer_name: str
+    customer_phone: str
+    expected_date: date
+    time_slot: str = "全天"
+    people_count: int = 1
+    budget: float = 0
+    preferred_color: Optional[str] = None
+    preferred_tea: Optional[str] = None
+    photo_style: Optional[str] = None
+    remark: Optional[str] = None
+    status: str = "pending"
+
+    _validate_date = field_validator('expected_date', mode='before')(parse_date)
+
+class ReservationCreate(ReservationBase):
+    pass
+
+class ReservationUpdate(BaseModel):
+    customer_name: Optional[str] = None
+    customer_phone: Optional[str] = None
+    expected_date: Optional[date] = None
+    time_slot: Optional[str] = None
+    people_count: Optional[int] = None
+    budget: Optional[float] = None
+    preferred_color: Optional[str] = None
+    preferred_tea: Optional[str] = None
+    photo_style: Optional[str] = None
+    remark: Optional[str] = None
+    status: Optional[str] = None
+
+    _validate_date = field_validator('expected_date', mode='before')(parse_date)
+
+class Reservation(ReservationBase):
+    id: int
+    plans: List[TeaPlan] = []
+    
+    class Config:
+        from_attributes = True
+
+class ConflictInfo(BaseModel):
+    date: date
+    time_slot: str
+    type: str
+    id: int
+    name: str
+    customer_name: str
+
+class ConflictCheckResponse(BaseModel):
+    has_conflict: bool
+    conflicts: List[ConflictInfo] = []
+
+class ConvertToPlanRequest(BaseModel):
+    theme_id: int
+    name: str
+
+class TimeSlotStats(BaseModel):
+    time_slot: str
+    count: int
+
+class ReservationStatsResponse(BaseModel):
+    conversion_rate: float
+    total_reservations: int
+    confirmed_reservations: int
+    converted_plans: int
+    cancelled_reservations: int
+    time_slot_stats: List[TimeSlotStats]
+    popular_tea_stats: List[TeaCategoryReservationStats]
+    popular_color_stats: List[ColorReservationStats]
+
 class StatisticsResponse(BaseModel):
     theme_stats: List[ThemeStats]
     utensil_usage_stats: List[UtensilUsageStats]
@@ -278,3 +349,4 @@ class StatisticsResponse(BaseModel):
     total_orders: int
     total_revenue: float
     avg_rating: float
+    reservation_stats: ReservationStatsResponse

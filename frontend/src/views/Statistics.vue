@@ -9,13 +9,51 @@
     </div>
 
     <el-row :gutter="20" style="margin-bottom: 20px">
-      <el-col :span="6">
+      <el-col :span="4">
+        <div class="stat-card">
+          <div class="label">总预约数</div>
+          <div class="value">{{ stats?.reservation_stats?.total_reservations || 0 }}</div>
+          <el-icon><Calendar /></el-icon>
+        </div>
+      </el-col>
+      <el-col :span="4">
+        <div class="stat-card" style="background: linear-gradient(135deg, #e6f7ff 0%, #bae7ff 100%);">
+          <div class="label">预约转化率</div>
+          <div class="value" style="color: #1890ff">{{ stats?.reservation_stats?.conversion_rate || 0 }}%</div>
+          <el-icon><TrendCharts /></el-icon>
+        </div>
+      </el-col>
+      <el-col :span="4">
+        <div class="stat-card" style="background: linear-gradient(135deg, #fff7e6 0%, #ffd591 100%);">
+          <div class="label">已确认预约</div>
+          <div class="value" style="color: #fa8c16">{{ stats?.reservation_stats?.confirmed_reservations || 0 }}</div>
+          <el-icon><CircleCheck /></el-icon>
+        </div>
+      </el-col>
+      <el-col :span="4">
+        <div class="stat-card" style="background: linear-gradient(135deg, #fff1f0 0%, #ffa39e 100%);">
+          <div class="label">取消预约数</div>
+          <div class="value" style="color: #f5222d">{{ stats?.reservation_stats?.cancelled_reservations || 0 }}</div>
+          <el-icon><Close /></el-icon>
+        </div>
+      </el-col>
+      <el-col :span="4">
+        <div class="stat-card" style="background: linear-gradient(135deg, #f6ffed 0%, #b7eb8f 100%);">
+          <div class="label">已转化方案</div>
+          <div class="value" style="color: #52c41a">{{ stats?.reservation_stats?.converted_plans || 0 }}</div>
+          <el-icon><Select /></el-icon>
+        </div>
+      </el-col>
+      <el-col :span="4">
         <div class="stat-card">
           <div class="label">总订单数</div>
           <div class="value">{{ stats?.total_orders || 0 }}</div>
           <el-icon><Tickets /></el-icon>
         </div>
       </el-col>
+    </el-row>
+
+    <el-row :gutter="20" style="margin-bottom: 20px">
       <el-col :span="6">
         <div class="stat-card">
           <div class="label">总营收</div>
@@ -89,6 +127,27 @@
         <div class="chart-card card-shadow">
           <h3 class="chart-title">🔄 复购茶席类型统计</h3>
           <v-chart class="chart" :option="repeatChartOption" autoresize />
+        </div>
+      </el-col>
+    </el-row>
+
+    <el-row :gutter="20" style="margin-top: 20px">
+      <el-col :span="8">
+        <div class="chart-card card-shadow">
+          <h3 class="chart-title">⏰ 各时段预约量</h3>
+          <v-chart class="chart" :option="timeSlotChartOption" autoresize />
+        </div>
+      </el-col>
+      <el-col :span="8">
+        <div class="chart-card card-shadow">
+          <h3 class="chart-title">🍵 热门预约茶类 TOP5</h3>
+          <v-chart class="chart" :option="popularTeaChartOption" autoresize />
+        </div>
+      </el-col>
+      <el-col :span="8">
+        <div class="chart-card card-shadow">
+          <h3 class="chart-title">🎨 热门预约主题色 TOP5</h3>
+          <v-chart class="chart" :option="popularColorChartOption" autoresize />
         </div>
       </el-col>
     </el-row>
@@ -183,7 +242,7 @@ import {
   LegendComponent,
   GridComponent
 } from 'echarts/components'
-import { Refresh, Tickets, Money, Star, PriceTag } from '@element-plus/icons-vue'
+import { Refresh, Tickets, Money, Star, PriceTag, Calendar, TrendCharts, CircleCheck, Close, Select } from '@element-plus/icons-vue'
 import { statsApi } from '@/api'
 import type { StatisticsResponse } from '@/types'
 
@@ -386,7 +445,7 @@ const damageChartOption = computed(() => ({
 
 const repeatChartOption = computed(() => ({
   tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-  legend: { data: ['复购次数', '总订单数'] },
+  legend: { data: ['复购次数'] },
   grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
   xAxis: {
     type: 'category',
@@ -409,6 +468,98 @@ const repeatChartOption = computed(() => ({
       barWidth: '40%'
     }
   ]
+}))
+
+const timeSlotChartOption = computed(() => ({
+  tooltip: { trigger: 'item', formatter: '{b}: {c}次 ({d}%)' },
+  legend: { orient: 'vertical', left: 'left' },
+  series: [{
+    name: '时段预约量',
+    type: 'pie',
+    radius: ['40%', '70%'],
+    avoidLabelOverlap: false,
+    itemStyle: { borderRadius: 10, borderColor: '#fff', borderWidth: 2 },
+    label: { show: true, formatter: '{b}\n{c}次' },
+    emphasis: {
+      label: { show: true, fontSize: 16, fontWeight: 'bold' }
+    },
+    data: stats.value?.reservation_stats?.time_slot_stats.map(t => ({
+      value: t.count,
+      name: t.time_slot
+    })) || [],
+    color: ['#8B4513', '#CD853F', '#D2B48C', '#A0522D', '#B8860B']
+  }]
+}))
+
+const popularTeaChartOption = computed(() => ({
+  tooltip: {
+    trigger: 'axis',
+    axisPointer: { type: 'shadow' },
+    formatter: (params: any) => {
+      const p = params[0]
+      return `${p.name}<br/>预约量: <b>${p.value}</b>`
+    }
+  },
+  grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
+  xAxis: {
+    type: 'category',
+    data: stats.value?.reservation_stats?.popular_tea_stats.map(t => t.tea_category) || [],
+    axisLabel: { color: '#8B4513', rotate: 15 }
+  },
+  yAxis: {
+    type: 'value',
+    axisLabel: { color: '#8B4513' }
+  },
+  series: [{
+    data: stats.value?.reservation_stats?.popular_tea_stats.map(t => ({
+      value: t.count,
+      itemStyle: {
+        color: {
+          type: 'linear',
+          x: 0, y: 0, x2: 0, y2: 1,
+          colorStops: [
+            { offset: 0, color: '#90EE90' },
+            { offset: 1, color: '#228B22' }
+          ]
+        },
+        borderRadius: [8, 8, 0, 0]
+      }
+    })) || [],
+    type: 'bar',
+    barWidth: '60%'
+  }]
+}))
+
+const popularColorChartOption = computed(() => ({
+  tooltip: {
+    trigger: 'axis',
+    axisPointer: { type: 'shadow' },
+    formatter: (params: any) => {
+      const p = params[0]
+      return `${p.name}<br/>预约量: <b>${p.value}</b>`
+    }
+  },
+  grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
+  xAxis: {
+    type: 'category',
+    data: stats.value?.reservation_stats?.popular_color_stats.map(c => c.theme_color) || [],
+    axisLabel: { color: '#8B4513', rotate: 15 }
+  },
+  yAxis: {
+    type: 'value',
+    axisLabel: { color: '#8B4513' }
+  },
+  series: [{
+    data: stats.value?.reservation_stats?.popular_color_stats.map(c => ({
+      value: c.count,
+      itemStyle: {
+        color: getColorHex(c.theme_color),
+        borderRadius: [8, 8, 0, 0]
+      }
+    })) || [],
+    type: 'bar',
+    barWidth: '60%'
+  }]
 }))
 
 const loadStats = async () => {
