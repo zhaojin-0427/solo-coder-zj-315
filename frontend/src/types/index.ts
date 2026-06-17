@@ -38,17 +38,13 @@ export interface TeaPlan {
   theme_id: number
   name: string
   date: string
-  time_slot: string
   people_count: number
   budget: number
   photo_style: string
-  theme_color: string
-  tea_category: string
   status: string
   customer_name: string
   customer_phone: string
   total_price: number
-  reservation_id?: number
   theme?: Theme
   recommended_items: RecommendedItem[]
 }
@@ -125,110 +121,9 @@ export interface StatisticsResponse {
   damage_stats: DamageStats[]
   price_range_stats: PriceRangeStats[]
   repeat_type_stats: RepeatTypeStats[]
-  color_reservation_stats: ColorReservationStats[]
-  tea_category_reservation_stats: TeaCategoryReservationStats[]
   total_orders: number
   total_revenue: number
   avg_rating: number
-  reservation_stats: ReservationStatsResponse
-}
-
-export interface ColorReservationStats {
-  theme_color: string
-  count: number
-}
-
-export interface TeaCategoryReservationStats {
-  tea_category: string
-  count: number
-}
-
-export interface RecommendationItem {
-  utensil: Utensil
-  quantity: number
-  score: number
-  category: string
-}
-
-export interface SelectedItem {
-  utensil_id: number
-  quantity: number
-  selected: boolean
-}
-
-export interface Reservation {
-  id: number
-  customer_name: string
-  customer_phone: string
-  expected_date: string
-  time_slot: string
-  people_count: number
-  budget: number
-  preferred_color?: string
-  preferred_tea?: string
-  photo_style?: string
-  remark?: string
-  status: string
-  plans: TeaPlan[]
-}
-
-export interface ConflictInfo {
-  date: string
-  time_slot: string
-  type: string
-  id: number
-  name: string
-  customer_name: string
-}
-
-export interface ConflictCheckResponse {
-  has_conflict: boolean
-  conflicts: ConflictInfo[]
-}
-
-export interface TimeSlotStats {
-  time_slot: string
-  count: number
-}
-
-export interface ReservationStatsResponse {
-  conversion_rate: number
-  total_reservations: number
-  confirmed_reservations: number
-  converted_plans: number
-  cancelled_reservations: number
-  time_slot_stats: TimeSlotStats[]
-  popular_tea_stats: TeaCategoryReservationStats[]
-  popular_color_stats: ColorReservationStats[]
-}
-
-export interface ScheduleOccupancyItem {
-  id: string
-  date: string
-  time_slot: string
-  source_type: string
-  source_name: string
-  customer_name: string
-  business_type: string
-  status: string
-  related_id?: number
-}
-
-export interface ScheduleOccupancyDay {
-  date: string
-  has_conflict: boolean
-  morning: ScheduleOccupancyItem[]
-  afternoon: ScheduleOccupancyItem[]
-  evening: ScheduleOccupancyItem[]
-  full_day: ScheduleOccupancyItem[]
-}
-
-export interface ScheduleOccupancyResponse {
-  start_date: string
-  end_date: string
-  total_occupied: number
-  total_conflicts: number
-  days: ScheduleOccupancyDay[]
 }
 
 export const TEA_CATEGORIES = ['绿茶', '红茶', '乌龙茶', '普洱茶', '白茶', '黄茶']
@@ -237,5 +132,3 @@ export const UTENSIL_CATEGORIES = ['盖碗', '茶海', '杯盏', '席布', '花�
 export const MATERIALS = ['青瓷', '白瓷', '紫砂', '朱泥', '玻璃', '粗陶', '棉麻', '竹编', '织锦', '铜器']
 export const COLORS = ['朱红', '赭石', '胭脂', '琥珀', '金黄', '橙黄', '青色', '湖蓝', '黛绿', '松石', '月白', '藏青', '米白', '象牙', '玄黑', '紫砂', '灰墨', '素白']
 export const PLAN_STATUS = ['draft', 'confirmed', 'borrowing', 'completed']
-export const TIME_SLOTS = ['上午', '下午', '晚上', '全天']
-export const RESERVATION_STATUS = ['pending', 'confirmed', 'cancelled', 'converted']

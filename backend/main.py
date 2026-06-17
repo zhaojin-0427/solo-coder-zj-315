@@ -232,7 +232,16 @@ def read_activity_review(review_id: int, db: Session = Depends(get_db)):
 
 @app.post("/api/activity-reviews", response_model=schemas.ActivityReview, tags=["活动复盘"])
 def create_activity_review(review: schemas.ActivityReviewCreate, db: Session = Depends(get_db)):
-    return crud.create_activity_review(db=db, review=review)
+    result = crud.create_activity_review(db=db, review=review)
+    db_plan = crud.get_tea_plan(db, review.plan_id)
+    if db_plan:
+        crud.update_customer_profile_from_reservation(
+            db, customer_name=db_plan.customer_name, customer_phone=db_plan.customer_phone,
+            preferred_tea=db_plan.tea_category, preferred_color=db_plan.theme_color,
+            photo_style=db_plan.photo_style, budget=db_plan.budget,
+            activity_date=db_plan.date
+        )
+    return result
 
 @app.put("/api/activity-reviews/{review_id}", response_model=schemas.ActivityReview, tags=["活动复盘"])
 def update_activity_review(review_id: int, review: schemas.ActivityReviewUpdate, db: Session = Depends(get_db)):
@@ -315,7 +324,14 @@ def create_reservation(reservation: schemas.ReservationCreate, db: Session = Dep
                 "conflicts": serializable_conflicts
             }
         )
-    return crud.create_reservation(db=db, reservation=reservation)
+    result = crud.create_reservation(db=db, reservation=reservation)
+    crud.update_customer_profile_from_reservation(
+        db, customer_name=reservation.customer_name, customer_phone=reservation.customer_phone,
+        preferred_tea=reservation.preferred_tea, preferred_color=reservation.preferred_color,
+        photo_style=reservation.photo_style, budget=reservation.budget,
+        activity_date=reservation.expected_date
+    )
+    return result
 
 @app.put("/api/reservations/{reservation_id}", response_model=schemas.Reservation, tags=["预约管理"])
 def update_reservation(reservation_id: int, reservation: schemas.ReservationUpdate, db: Session = Depends(get_db)):
@@ -407,7 +423,66 @@ def convert_reservation_to_plan(
     )
     if db_plan is None:
         raise HTTPException(status_code=500, detail="转化失败")
+    
+    crud.update_customer_profile_from_reservation(
+        db, customer_name=db_reservation.customer_name, customer_phone=db_reservation.customer_phone,
+        preferred_tea=db_reservation.preferred_tea, preferred_color=db_reservation.preferred_color,
+        photo_style=db_reservation.photo_style, budget=db_reservation.budget,
+        activity_date=db_reservation.expected_date
+    )
+    
     return db_plan
+
+@app.get("/api/customer-profiles", response_model=List[schemas.CustomerProfile], tags=["客户档案"])
+def read_customer_profiles(
+    skip: int = 0,
+    limit: int = 100,
+    customer_name: str = None,
+    customer_phone: str = None,
+    preferred_tea: str = None,
+    is_repurchase: bool = None,
+    db: Session = Depends(get_db)
+):
+    return crud.get_customer_profiles(
+        db, skip=skip, limit=limit,
+        customer_name=customer_name, customer_phone=customer_phone,
+        preferred_tea=preferred_tea, is_repurchase=is_repurchase
+    )
+
+@app.get("/api/customer-profiles/{profile_id}", response_model=schemas.CustomerProfile, tags=["客户档案"])
+def read_customer_profile(profile_id: int, db: Session = Depends(get_db)):
+    db_profile = crud.get_customer_profile(db, profile_id=profile_id)
+    if db_profile is None:
+        raise HTTPException(status_code=404, detail="Customer profile not found")
+    return db_profile
+
+@app.put("/api/customer-profiles/{profile_id}", response_model=schemas.CustomerProfile, tags=["客户档案"])
+def update_customer_profile(profile_id: int, profile: schemas.CustomerProfileUpdate, db: Session = Depends(get_db)):
+    db_profile = crud.update_customer_profile(db, profile_id=profile_id, profile=profile)
+    if db_profile is None:
+        raise HTTPException(status_code=404, detail="Customer profile not found")
+    return db_profile
+
+@app.get("/api/customer-profiles/{profile_id}/reservations", response_model=List[schemas.Reservation], tags=["客户档案"])
+def read_customer_reservations(profile_id: int, db: Session = Depends(get_db)):
+    db_profile = crud.get_customer_profile(db, profile_id=profile_id)
+    if db_profile is None:
+        raise HTTPException(status_code=404, detail="Customer profile not found")
+    return crud.get_customer_reservations(db, phone=db_profile.customer_phone)
+
+@app.get("/api/customer-profiles/{profile_id}/plans", response_model=List[schemas.TeaPlan], tags=["客户档案"])
+def read_customer_plans(profile_id: int, db: Session = Depends(get_db)):
+    db_profile = crud.get_customer_profile(db, profile_id=profile_id)
+    if db_profile is None:
+        raise HTTPException(status_code=404, detail="Customer profile not found")
+    return crud.get_customer_plans(db, phone=db_profile.customer_phone)
+
+@app.get("/api/customer-profiles/search/by-phone", response_model=schemas.CustomerProfile, tags=["客户档案"])
+def search_customer_by_phone(phone: str, db: Session = Depends(get_db)):
+    db_profile = crud.get_customer_profile_by_phone(db, phone=phone)
+    if db_profile is None:
+        raise HTTPException(status_code=404, detail="Customer profile not found")
+    return db_profile
 
 @app.get("/api/statistics", response_model=schemas.StatisticsResponse, tags=["数据统计"])
 def get_statistics(db: Session = Depends(get_db)):

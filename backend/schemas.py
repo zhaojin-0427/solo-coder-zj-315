@@ -87,21 +87,13 @@ class RecommendedItem(RecommendedItemBase):
     class Config:
         from_attributes = True
 
-class SelectedItemCreate(BaseModel):
-    utensil_id: int
-    quantity: int = 1
-    selected: bool = True
-
 class TeaPlanBase(BaseModel):
     theme_id: int
     name: str
     date: date
-    time_slot: str = "全天"
     people_count: int
     budget: float
     photo_style: str
-    theme_color: str
-    tea_category: str
     customer_name: str
     customer_phone: str
     status: str = "draft"
@@ -109,7 +101,7 @@ class TeaPlanBase(BaseModel):
     _validate_date = field_validator('date', mode='before')(parse_date)
 
 class TeaPlanCreate(TeaPlanBase):
-    selected_items: List[SelectedItemCreate] = []
+    pass
 
 class TeaPlanUpdate(BaseModel):
     theme_id: Optional[int] = None
@@ -118,13 +110,10 @@ class TeaPlanUpdate(BaseModel):
     people_count: Optional[int] = None
     budget: Optional[float] = None
     photo_style: Optional[str] = None
-    theme_color: Optional[str] = None
-    tea_category: Optional[str] = None
     customer_name: Optional[str] = None
     customer_phone: Optional[str] = None
     status: Optional[str] = None
     total_price: Optional[float] = None
-    selected_items: Optional[List[SelectedItemCreate]] = None
 
     _validate_date = field_validator('date', mode='before')(parse_date)
 
@@ -260,119 +249,12 @@ class RepeatTypeStats(BaseModel):
     tea_type: str
     count: int
 
-class ColorReservationStats(BaseModel):
-    theme_color: str
-    count: int
-
-class TeaCategoryReservationStats(BaseModel):
-    tea_category: str
-    count: int
-
-class ReservationBase(BaseModel):
-    customer_name: str
-    customer_phone: str
-    expected_date: date
-    time_slot: str = "全天"
-    people_count: int = 1
-    budget: float = 0
-    preferred_color: Optional[str] = None
-    preferred_tea: Optional[str] = None
-    photo_style: Optional[str] = None
-    remark: Optional[str] = None
-    status: str = "pending"
-
-    _validate_date = field_validator('expected_date', mode='before')(parse_date)
-
-class ReservationCreate(ReservationBase):
-    pass
-
-class ReservationUpdate(BaseModel):
-    customer_name: Optional[str] = None
-    customer_phone: Optional[str] = None
-    expected_date: Optional[date] = None
-    time_slot: Optional[str] = None
-    people_count: Optional[int] = None
-    budget: Optional[float] = None
-    preferred_color: Optional[str] = None
-    preferred_tea: Optional[str] = None
-    photo_style: Optional[str] = None
-    remark: Optional[str] = None
-    status: Optional[str] = None
-
-    _validate_date = field_validator('expected_date', mode='before')(parse_date)
-
-class Reservation(ReservationBase):
-    id: int
-    plans: List[TeaPlan] = []
-    
-    class Config:
-        from_attributes = True
-
-class ConflictInfo(BaseModel):
-    date: date
-    time_slot: str
-    type: str
-    id: int
-    name: str
-    customer_name: str
-
-class ConflictCheckResponse(BaseModel):
-    has_conflict: bool
-    conflicts: List[ConflictInfo] = []
-
-class ConvertToPlanRequest(BaseModel):
-    theme_id: int
-    name: str
-
-class TimeSlotStats(BaseModel):
-    time_slot: str
-    count: int
-
-class ReservationStatsResponse(BaseModel):
-    conversion_rate: float
-    total_reservations: int
-    confirmed_reservations: int
-    converted_plans: int
-    cancelled_reservations: int
-    time_slot_stats: List[TimeSlotStats]
-    popular_tea_stats: List[TeaCategoryReservationStats]
-    popular_color_stats: List[ColorReservationStats]
-
-class ScheduleOccupancyItem(BaseModel):
-    id: str
-    date: date
-    time_slot: str
-    source_type: str
-    source_name: str
-    customer_name: str
-    business_type: str
-    status: str
-    related_id: Optional[int] = None
-
-class ScheduleOccupancyDay(BaseModel):
-    date: date
-    has_conflict: bool
-    morning: List[ScheduleOccupancyItem] = []
-    afternoon: List[ScheduleOccupancyItem] = []
-    evening: List[ScheduleOccupancyItem] = []
-    full_day: List[ScheduleOccupancyItem] = []
-
-class ScheduleOccupancyResponse(BaseModel):
-    start_date: date
-    end_date: date
-    total_occupied: int
-    total_conflicts: int
-    days: List[ScheduleOccupancyDay] = []
-
 class StatisticsResponse(BaseModel):
     theme_stats: List[ThemeStats]
     utensil_usage_stats: List[UtensilUsageStats]
     damage_stats: List[DamageStats]
     price_range_stats: List[PriceRangeStats]
     repeat_type_stats: List[RepeatTypeStats]
-    color_reservation_stats: List[ColorReservationStats]
-    tea_category_reservation_stats: List[TeaCategoryReservationStats]
     total_orders: int
     total_revenue: float
     avg_rating: float
-    reservation_stats: ReservationStatsResponse

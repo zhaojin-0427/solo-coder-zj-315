@@ -13,6 +13,10 @@
             <el-icon><Calendar /></el-icon>
             预约排期
           </el-menu-item>
+          <el-menu-item index="/customer-profiles">
+            <el-icon><User /></el-icon>
+            客户档案
+          </el-menu-item>
           <el-menu-item index="/tea-plans">
             <el-icon><Document /></el-icon>
             主题方案
@@ -43,7 +47,7 @@
 </template>
 
 <script setup lang="ts">
-import { Calendar, Document, Collection, List, EditPen, DataAnalysis } from '@element-plus/icons-vue'
+import { Calendar, Document, Collection, List, EditPen, DataAnalysis, User } from '@element-plus/icons-vue'
 </script>
 
 <style scoped>

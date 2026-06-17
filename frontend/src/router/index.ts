@@ -14,6 +14,12 @@ const router = createRouter({
       meta: { title: '预约排期' }
     },
     {
+      path: '/customer-profiles',
+      name: 'CustomerProfiles',
+      component: () => import('@/views/CustomerProfiles.vue'),
+      meta: { title: '客户档案' }
+    },
+    {
       path: '/tea-plans',
       name: 'TeaPlans',
       component: () => import('@/views/TeaPlans.vue'),

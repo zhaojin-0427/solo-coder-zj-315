@@ -338,6 +338,14 @@
             </el-form-item>
           </el-col>
         </el-row>
+        <el-row v-if="!isEditing" :gutter="20" style="margin-bottom: 18px">
+          <el-col :span="24">
+            <el-button type="success" plain @click="openCustomerSelect" style="width: 100%">
+              <el-icon><User /></el-icon>
+              选择历史客户（自动带入联系方式和偏好信息）
+            </el-button>
+          </el-col>
+        </el-row>
         <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="期望日期" required>
@@ -469,6 +477,47 @@
       </template>
     </el-dialog>
 
+    <el-dialog v-model="showCustomerSelectDialog" title="选择历史客户" width="700px">
+      <el-row :gutter="10" style="margin-bottom: 15px">
+        <el-col :span="18">
+          <el-input v-model="customerSearchKey" placeholder="输入客户姓名或手机号搜索" clearable @keyup.enter="searchCustomers" @clear="searchCustomers" />
+        </el-col>
+        <el-col :span="6">
+          <el-button type="primary" @click="searchCustomers" style="width: 100%">
+            <el-icon><Search /></el-icon>
+            搜索
+          </el-button>
+        </el-col>
+      </el-row>
+      <el-table :data="customerList" v-loading="loadingCustomers" border size="small" style="max-height: 400px; overflow-y: auto" @row-click="selectCustomer" highlight-current-row>
+        <el-table-column prop="customer_name" label="姓名" width="100" />
+        <el-table-column prop="customer_phone" label="手机号" width="130" />
+        <el-table-column prop="preferred_tea" label="偏好茶类" width="90">
+          <template #default="{ row }">{{ row.preferred_tea || '-' }}</template>
+        </el-table-column>
+        <el-table-column label="偏好色" width="80">
+          <template #default="{ row }">
+            <span v-if="row.preferred_color" class="color-dot" :style="{ background: getColorHex(row.preferred_color) }"></span>
+            {{ row.preferred_color || '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="preferred_photo_style" label="拍照风格" width="100">
+          <template #default="{ row }">{{ row.preferred_photo_style || '-' }}</template>
+        </el-table-column>
+        <el-table-column prop="average_budget" label="平均预算" width="90">
+          <template #default="{ row }">¥{{ row.average_budget }}</template>
+        </el-table-column>
+        <el-table-column prop="reservation_count" label="预约次数" width="80">
+          <template #default="{ row }">{{ row.reservation_count }} 次</template>
+        </el-table-column>
+        <el-table-column label="操作" width="80">
+          <template #default="{ row }">
+            <el-button type="primary" size="small" link @click.stop="selectCustomer(row)">选择</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-dialog>
+
     <el-dialog v-model="showConvertDialog" title="转化为茶席方案" width="500px">
       <el-form :model="convertForm" label-width="100px" @submit.prevent>
         <el-form-item label="方案名称" required>
@@ -511,10 +560,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Refresh, Calendar, List, ArrowLeft, ArrowRight, Grid, Warning, Sunrise, Sunny, Moon, Clock } from '@element-plus/icons-vue'
-import { reservationApi, themeApi } from '@/api'
+import { Plus, Refresh, Calendar, List, ArrowLeft, ArrowRight, Grid, Warning, Sunrise, Sunny, Moon, Clock, User, Search } from '@element-plus/icons-vue'
+import { reservationApi, themeApi, customerProfileApi } from '@/api'
 import { TEA_CATEGORIES, COLORS, PHOTO_STYLES, TIME_SLOTS } from '@/types'
-import type { Reservation, Theme, ConflictCheckResponse, ScheduleOccupancyResponse, ScheduleOccupancyItem } from '@/types'
+import type { Reservation, Theme, ConflictCheckResponse, ScheduleOccupancyResponse, ScheduleOccupancyItem, CustomerProfile } from '@/types'
 
 const reservations = ref<Reservation[]>([])
 const themes = ref<Theme[]>([])
@@ -557,6 +606,11 @@ const convertForm = ref({
   theme_id: 0,
   name: ''
 })
+
+const showCustomerSelectDialog = ref(false)
+const customerSearchKey = ref('')
+const customerList = ref<CustomerProfile[]>([])
+const loadingCustomers = ref(false)
 
 interface CalendarDay {
   day: number
@@ -1007,6 +1061,43 @@ const loadThemes = async () => {
   } catch (e) {
     ElMessage.error('加载主题失败')
   }
+}
+
+const openCustomerSelect = async () => {
+  showCustomerSelectDialog.value = true
+  customerSearchKey.value = ''
+  await searchCustomers()
+}
+
+const searchCustomers = async () => {
+  loadingCustomers.value = true
+  try {
+    const params: any = {}
+    if (customerSearchKey.value) {
+      if (/^\d+$/.test(customerSearchKey.value)) {
+        params.customer_phone = customerSearchKey.value
+      } else {
+        params.customer_name = customerSearchKey.value
+      }
+    }
+    const res = await customerProfileApi.getAll(params)
+    customerList.value = res.data
+  } catch (e) {
+    customerList.value = []
+  } finally {
+    loadingCustomers.value = false
+  }
+}
+
+const selectCustomer = (customer: CustomerProfile) => {
+  formData.value.customer_name = customer.customer_name
+  formData.value.customer_phone = customer.customer_phone
+  if (customer.preferred_tea) formData.value.preferred_tea = customer.preferred_tea
+  if (customer.preferred_color) formData.value.preferred_color = customer.preferred_color
+  if (customer.preferred_photo_style) formData.value.photo_style = customer.preferred_photo_style
+  if (customer.average_budget > 0) formData.value.budget = customer.average_budget
+  showCustomerSelectDialog.value = false
+  ElMessage.success(`已带入客户 ${customer.customer_name} 的偏好信息`)
 }
 
 onMounted(() => {
