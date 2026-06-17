@@ -1,6 +1,23 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, field_validator
 from typing import List, Optional
 from datetime import date, datetime
+import re
+
+def parse_date(v):
+    if v is None:
+        return None
+    if isinstance(v, date):
+        return v
+    if isinstance(v, datetime):
+        return v.date()
+    if isinstance(v, str):
+        if re.match(r'^\d{4}-\d{2}-\d{2}$', v):
+            return date.fromisoformat(v)
+        try:
+            return datetime.fromisoformat(v.replace('Z', '+00:00')).date()
+        except ValueError:
+            raise ValueError(f"无法解析日期: {v}")
+    raise ValueError(f"无法解析日期: {v}")
 
 class ThemeBase(BaseModel):
     name: str
@@ -81,6 +98,8 @@ class TeaPlanBase(BaseModel):
     customer_phone: str
     status: str = "draft"
 
+    _validate_date = field_validator('date', mode='before')(parse_date)
+
 class TeaPlanCreate(TeaPlanBase):
     pass
 
@@ -95,6 +114,8 @@ class TeaPlanUpdate(BaseModel):
     customer_phone: Optional[str] = None
     status: Optional[str] = None
     total_price: Optional[float] = None
+
+    _validate_date = field_validator('date', mode='before')(parse_date)
 
 class TeaPlan(TeaPlanBase):
     id: int
@@ -131,6 +152,9 @@ class BorrowListBase(BaseModel):
     return_date: date
     status: str = "pending"
 
+    _validate_borrow_date = field_validator('borrow_date', mode='before')(parse_date)
+    _validate_return_date = field_validator('return_date', mode='before')(parse_date)
+
 class BorrowListCreate(BorrowListBase):
     items: List[BorrowItemCreate]
 
@@ -138,6 +162,9 @@ class BorrowListUpdate(BaseModel):
     borrow_date: Optional[date] = None
     return_date: Optional[date] = None
     status: Optional[str] = None
+
+    _validate_borrow_date = field_validator('borrow_date', mode='before')(parse_date)
+    _validate_return_date = field_validator('return_date', mode='before')(parse_date)
 
 class BorrowList(BorrowListBase):
     id: int
@@ -173,6 +200,8 @@ class ActivityReviewBase(BaseModel):
     customer_feedback: Optional[str] = None
     rating: int
     is_repeat_customer: bool = False
+
+    _validate_review_date = field_validator('review_date', mode='before')(parse_date)
 
 class ActivityReviewCreate(ActivityReviewBase):
     items: List[ReviewItemCreate]

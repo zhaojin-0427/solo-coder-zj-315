@@ -6,6 +6,43 @@ const api = axios.create({
   timeout: 10000
 })
 
+const formatDate = (d: Date): string => {
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+const normalizeDates = (data: any): any => {
+  if (data instanceof Date) {
+    return formatDate(data)
+  }
+  if (typeof data === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(data)) {
+    return formatDate(new Date(data))
+  }
+  if (Array.isArray(data)) {
+    return data.map(normalizeDates)
+  }
+  if (data && typeof data === 'object') {
+    const result: Record<string, any> = {}
+    for (const [key, value] of Object.entries(data)) {
+      result[key] = normalizeDates(value)
+    }
+    return result
+  }
+  return data
+}
+
+api.interceptors.request.use((config) => {
+  if (config.data !== undefined && config.data !== null) {
+    config.data = normalizeDates(config.data)
+  }
+  if (config.params !== undefined && config.params !== null) {
+    config.params = normalizeDates(config.params)
+  }
+  return config
+})
+
 export const themeApi = {
   getAll: () => api.get<Theme[]>('/themes'),
   getOne: (id: number) => api.get<Theme>(`/themes/${id}`),
