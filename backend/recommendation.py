@@ -92,7 +92,7 @@ def recommend_utensils(db: Session, theme_color: str, tea_category: str,
     categories = ["盖碗", "茶海", "杯盏", "席布", "花器"]
     recommendations = []
     
-    remaining_budget = budget
+    avg_budget_per_category = budget / len(categories)
     
     for category in categories:
         utensils = db.query(Utensil).filter(
@@ -105,24 +105,39 @@ def recommend_utensils(db: Session, theme_color: str, tea_category: str,
         
         scored_utensils = []
         for utensil in utensils:
-            if utensil.price > remaining_budget:
-                continue
             score = calculate_utensil_score(utensil, theme_color, tea_category, budget, photo_style)
             scored_utensils.append((utensil, score))
         
         scored_utensils.sort(key=lambda x: x[1], reverse=True)
         
         if scored_utensils:
-            selected, score = scored_utensils[0]
+            selected = None
+            selected_score = 0
+            for utensil, score in scored_utensils:
+                quantity = people_count if category == "杯盏" else 1
+                total_cost = utensil.price * quantity
+                remaining = budget - sum(
+                    r["utensil"].price * r["quantity"] for r in recommendations
+                )
+                if total_cost <= remaining or total_cost <= avg_budget_per_category * 1.5:
+                    selected = utensil
+                    selected_score = score
+                    break
+            
+            if not selected:
+                selected, selected_score = scored_utensils[0]
+            
             quantity = people_count if category == "杯盏" else 1
+            if category == "杯盏":
+                quantity = min(quantity, selected.available)
+            else:
+                quantity = min(quantity, selected.available)
             
             recommendations.append({
                 "utensil": selected,
                 "quantity": quantity,
-                "score": score,
+                "score": selected_score,
                 "category": category
             })
-            
-            remaining_budget -= selected.price * quantity
     
     return recommendations

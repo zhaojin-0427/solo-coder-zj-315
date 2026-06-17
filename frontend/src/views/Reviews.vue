@@ -215,10 +215,23 @@ watch(() => formData.value.plan_id, async (newVal) => {
       formData.value.items = res.data.items.map(item => ({
         utensil_id: item.utensil_id,
         utensil: item.utensil,
+        quantity: item.quantity,
         damaged: false,
         damage_description: '',
         cleaned: false
       }))
+    } else {
+      const planRes = await teaPlanApi.getOne(newVal)
+      formData.value.items = planRes.data.recommended_items
+        .filter((item: any) => item.selected)
+        .map((item: any) => ({
+          utensil_id: item.utensil_id,
+          utensil: item.utensil,
+          quantity: item.quantity,
+          damaged: false,
+          damage_description: '',
+          cleaned: false
+        }))
     }
   }
 })

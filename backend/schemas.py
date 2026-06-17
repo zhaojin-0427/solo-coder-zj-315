@@ -87,6 +87,11 @@ class RecommendedItem(RecommendedItemBase):
     class Config:
         from_attributes = True
 
+class SelectedItemCreate(BaseModel):
+    utensil_id: int
+    quantity: int = 1
+    selected: bool = True
+
 class TeaPlanBase(BaseModel):
     theme_id: int
     name: str
@@ -94,6 +99,8 @@ class TeaPlanBase(BaseModel):
     people_count: int
     budget: float
     photo_style: str
+    theme_color: str
+    tea_category: str
     customer_name: str
     customer_phone: str
     status: str = "draft"
@@ -101,7 +108,7 @@ class TeaPlanBase(BaseModel):
     _validate_date = field_validator('date', mode='before')(parse_date)
 
 class TeaPlanCreate(TeaPlanBase):
-    pass
+    selected_items: List[SelectedItemCreate] = []
 
 class TeaPlanUpdate(BaseModel):
     theme_id: Optional[int] = None
@@ -110,6 +117,8 @@ class TeaPlanUpdate(BaseModel):
     people_count: Optional[int] = None
     budget: Optional[float] = None
     photo_style: Optional[str] = None
+    theme_color: Optional[str] = None
+    tea_category: Optional[str] = None
     customer_name: Optional[str] = None
     customer_phone: Optional[str] = None
     status: Optional[str] = None
@@ -249,12 +258,22 @@ class RepeatTypeStats(BaseModel):
     tea_type: str
     count: int
 
+class ColorReservationStats(BaseModel):
+    theme_color: str
+    count: int
+
+class TeaCategoryReservationStats(BaseModel):
+    tea_category: str
+    count: int
+
 class StatisticsResponse(BaseModel):
     theme_stats: List[ThemeStats]
     utensil_usage_stats: List[UtensilUsageStats]
     damage_stats: List[DamageStats]
     price_range_stats: List[PriceRangeStats]
     repeat_type_stats: List[RepeatTypeStats]
+    color_reservation_stats: List[ColorReservationStats]
+    tea_category_reservation_stats: List[TeaCategoryReservationStats]
     total_orders: int
     total_revenue: float
     avg_rating: float

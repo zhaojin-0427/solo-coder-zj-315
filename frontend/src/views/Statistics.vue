@@ -57,7 +57,22 @@
     <el-row :gutter="20" style="margin-top: 20px">
       <el-col :span="12">
         <div class="chart-card card-shadow">
-          <h3 class="chart-title">🏺 器物使用频次 TOP 10</h3>
+          <h3 class="chart-title">🎨 主题色预约量</h3>
+          <v-chart class="chart" :option="colorReservationChartOption" autoresize />
+        </div>
+      </el-col>
+      <el-col :span="12">
+        <div class="chart-card card-shadow">
+          <h3 class="chart-title">🍵 茶类预约量</h3>
+          <v-chart class="chart" :option="teaCategoryReservationChartOption" autoresize />
+        </div>
+      </el-col>
+    </el-row>
+
+    <el-row :gutter="20" style="margin-top: 20px">
+      <el-col :span="12">
+        <div class="chart-card card-shadow">
+          <h3 class="chart-title">🏆 器物使用频次 TOP 10</h3>
           <v-chart class="chart" :option="usageChartOption" autoresize />
         </div>
       </el-col>
@@ -119,11 +134,45 @@
         </div>
       </el-col>
     </el-row>
+
+    <el-row :gutter="20" style="margin-top: 20px">
+      <el-col :span="12">
+        <div class="chart-card card-shadow">
+          <h3 class="chart-title">🎨 主题色预约量明细</h3>
+          <el-table :data="stats?.color_reservation_stats || []" size="small">
+            <el-table-column prop="theme_color" label="主题色" width="150">
+              <template #default="{ row }">
+                <span class="color-dot" :style="{ background: getColorHex(row.theme_color) }"></span>
+                {{ row.theme_color }}
+              </template>
+            </el-table-column>
+            <el-table-column prop="count" label="预约量" width="120" align="center">
+              <template #default="{ row }">
+                <el-tag type="primary" size="small">{{ row.count }}</el-tag>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+      </el-col>
+      <el-col :span="12">
+        <div class="chart-card card-shadow">
+          <h3 class="chart-title">🍵 茶类预约量明细</h3>
+          <el-table :data="stats?.tea_category_reservation_stats || []" size="small">
+            <el-table-column prop="tea_category" label="茶类" width="150" />
+            <el-table-column prop="count" label="预约量" width="120" align="center">
+              <template #default="{ row }">
+                <el-tag type="primary" size="small">{{ row.count }}</el-tag>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+      </el-col>
+    </el-row>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
@@ -155,6 +204,17 @@ const avgPrice = computed(() => {
   if (!stats.value || stats.value.total_orders === 0) return 0
   return stats.value.total_revenue / stats.value.total_orders
 })
+
+const getColorHex = (color: string) => {
+  const colorMap: Record<string, string> = {
+    '朱红': '#CD5C5C', '赭石': '#A0522D', '胭脂': '#C71585', '琥珀': '#FFBF00',
+    '金黄': '#DAA520', '橙黄': '#FF8C00', '青色': '#5F9EA0', '湖蓝': '#4F94CD',
+    '黛绿': '#556B2F', '松石': '#40E0D0', '月白': '#B0C4DE', '藏青': '#2F4F4F',
+    '米白': '#D2B48C', '象牙': '#FFFFF0', '玄黑': '#2C2C2C', '紫砂': '#8B6914',
+    '灰墨': '#696969', '素白': '#F5F5F5'
+  }
+  return colorMap[color] || '#8B4513'
+}
 
 const themeChartOption = computed(() => ({
   tooltip: {
@@ -207,6 +267,59 @@ const priceChartOption = computed(() => ({
       name: p.range
     })) || [],
     color: ['#D2B48C', '#CD853F', '#A0522D', '#8B4513', '#654321']
+  }]
+}))
+
+const colorReservationChartOption = computed(() => ({
+  tooltip: {
+    trigger: 'axis',
+    axisPointer: { type: 'shadow' },
+    formatter: (params: any) => {
+      const p = params[0]
+      return `${p.name}<br/>预约量: <b>${p.value}</b>`
+    }
+  },
+  grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
+  xAxis: {
+    type: 'category',
+    data: stats.value?.color_reservation_stats.map(c => c.theme_color) || [],
+    axisLabel: { color: '#8B4513' }
+  },
+  yAxis: {
+    type: 'value',
+    axisLabel: { color: '#8B4513' }
+  },
+  series: [{
+    data: stats.value?.color_reservation_stats.map(c => ({
+      value: c.count,
+      itemStyle: {
+        color: getColorHex(c.theme_color),
+        borderRadius: [8, 8, 0, 0]
+      }
+    })) || [],
+    type: 'bar',
+    barWidth: '50%'
+  }]
+}))
+
+const teaCategoryReservationChartOption = computed(() => ({
+  tooltip: { trigger: 'item', formatter: '{b}: {c}次 ({d}%)' },
+  legend: { orient: 'vertical', left: 'left' },
+  series: [{
+    name: '茶类预约量',
+    type: 'pie',
+    radius: ['35%', '65%'],
+    avoidLabelOverlap: false,
+    itemStyle: { borderRadius: 10, borderColor: '#fff', borderWidth: 2 },
+    label: { show: true, formatter: '{b}\n{c}次' },
+    emphasis: {
+      label: { show: true, fontSize: 16, fontWeight: 'bold' }
+    },
+    data: stats.value?.tea_category_reservation_stats.map(t => ({
+      value: t.count,
+      name: t.tea_category
+    })) || [],
+    color: ['#8FBC8F', '#CD853F', '#A0522D', '#8B4513', '#B8860B', '#556B2F']
   }]
 }))
 
@@ -383,5 +496,15 @@ onMounted(() => {
   font-size: 40px;
   opacity: 0.2;
   color: #8B4513;
+}
+
+.color-dot {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  vertical-align: middle;
+  border: 1px solid #d4c4a8;
+  margin-right: 4px;
 }
 </style>

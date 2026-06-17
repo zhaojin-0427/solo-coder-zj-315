@@ -46,6 +46,8 @@ class TeaPlan(Base):
     people_count = Column(Integer)
     budget = Column(Float)
     photo_style = Column(String(50))
+    theme_color = Column(String(50))
+    tea_category = Column(String(50))
     status = Column(String(20), default="draft")
     customer_name = Column(String(100))
     customer_phone = Column(String(20))

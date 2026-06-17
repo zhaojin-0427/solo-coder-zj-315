@@ -41,6 +41,8 @@ export interface TeaPlan {
   people_count: number
   budget: number
   photo_style: string
+  theme_color: string
+  tea_category: string
   status: string
   customer_name: string
   customer_phone: string
@@ -121,9 +123,34 @@ export interface StatisticsResponse {
   damage_stats: DamageStats[]
   price_range_stats: PriceRangeStats[]
   repeat_type_stats: RepeatTypeStats[]
+  color_reservation_stats: ColorReservationStats[]
+  tea_category_reservation_stats: TeaCategoryReservationStats[]
   total_orders: number
   total_revenue: number
   avg_rating: number
+}
+
+export interface ColorReservationStats {
+  theme_color: string
+  count: number
+}
+
+export interface TeaCategoryReservationStats {
+  tea_category: string
+  count: number
+}
+
+export interface RecommendationItem {
+  utensil: Utensil
+  quantity: number
+  score: number
+  category: string
+}
+
+export interface SelectedItem {
+  utensil_id: number
+  quantity: number
+  selected: boolean
 }
 
 export const TEA_CATEGORIES = ['绿茶', '红茶', '乌龙茶', '普洱茶', '白茶', '黄茶']

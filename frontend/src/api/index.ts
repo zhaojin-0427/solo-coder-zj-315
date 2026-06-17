@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { Theme, Utensil, TeaPlan, BorrowList, ActivityReview, StatisticsResponse } from '@/types'
+import type { Theme, Utensil, TeaPlan, BorrowList, ActivityReview, StatisticsResponse, SelectedItem } from '@/types'
 
 const api = axios.create({
   baseURL: '/api',
@@ -59,7 +59,7 @@ export const utensilApi = {
 export const teaPlanApi = {
   getAll: (status?: string) => api.get<TeaPlan[]>('/tea-plans', { params: { status } }),
   getOne: (id: number) => api.get<TeaPlan>(`/tea-plans/${id}`),
-  create: (data: Omit<TeaPlan, 'id' | 'total_price' | 'recommended_items' | 'theme'>) => api.post<TeaPlan>('/tea-plans', data),
+  create: (data: any) => api.post<TeaPlan>('/tea-plans', data),
   update: (id: number, data: Partial<TeaPlan>) => api.put<TeaPlan>(`/tea-plans/${id}`, data),
   regenerate: (id: number) => api.post<TeaPlan>(`/tea-plans/${id}/regenerate`)
 }

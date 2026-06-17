@@ -63,34 +63,29 @@ def get_tea_plan(db: Session, plan_id: int):
     return db.query(models.TeaPlan).filter(models.TeaPlan.id == plan_id).first()
 
 def create_tea_plan(db: Session, plan: schemas.TeaPlanCreate):
-    db_plan = models.TeaPlan(**plan.model_dump())
+    plan_data = plan.model_dump(exclude={'selected_items'})
+    db_plan = models.TeaPlan(**plan_data)
     db.add(db_plan)
     db.commit()
     db.refresh(db_plan)
     
-    theme = get_theme(db, plan.theme_id)
-    if theme:
-        recommendations = recommend_utensils(
-            db, theme.color, theme.tea_category, 
-            plan.people_count, plan.budget, plan.photo_style
-        )
-        
-        total_price = 0
-        for rec in recommendations:
-            utensil = rec["utensil"]
-            quantity = rec["quantity"]
+    total_price = 0
+    for item in plan.selected_items:
+        utensil = get_utensil(db, item.utensil_id)
+        if utensil:
             db_rec_item = models.RecommendedItem(
                 plan_id=db_plan.id,
-                utensil_id=utensil.id,
-                quantity=quantity,
-                selected=True
+                utensil_id=item.utensil_id,
+                quantity=item.quantity,
+                selected=item.selected
             )
             db.add(db_rec_item)
-            total_price += utensil.price * quantity
-        
-        db_plan.total_price = total_price
-        db.commit()
-        db.refresh(db_plan)
+            if item.selected:
+                total_price += utensil.price * item.quantity
+    
+    db_plan.total_price = total_price
+    db.commit()
+    db.refresh(db_plan)
     
     return db_plan
 
@@ -112,10 +107,17 @@ def regenerate_recommendations(db: Session, plan_id: int):
     
     db.query(models.RecommendedItem).filter(models.RecommendedItem.plan_id == plan_id).delete()
     
-    theme = get_theme(db, db_plan.theme_id)
-    if theme:
+    theme_color = db_plan.theme_color
+    tea_category = db_plan.tea_category
+    if not theme_color or not tea_category:
+        theme = get_theme(db, db_plan.theme_id)
+        if theme:
+            theme_color = theme_color or theme.color
+            tea_category = tea_category or theme.tea_category
+    
+    if theme_color and tea_category:
         recommendations = recommend_utensils(
-            db, theme.color, theme.tea_category,
+            db, theme_color, tea_category,
             db_plan.people_count, db_plan.budget, db_plan.photo_style
         )
         
@@ -312,6 +314,18 @@ def get_statistics(db: Session):
      .join(models.ActivityReview, models.TeaPlan.id == models.ActivityReview.plan_id, isouter=True) \
      .group_by(models.Theme.tea_category).all()
     
+    color_reservation_stats = db.query(
+        models.TeaPlan.theme_color,
+        func.count(models.TeaPlan.id).label("count")
+    ).filter(models.TeaPlan.theme_color.isnot(None), models.TeaPlan.theme_color != '') \
+     .group_by(models.TeaPlan.theme_color).all()
+    
+    tea_category_reservation_stats = db.query(
+        models.TeaPlan.tea_category,
+        func.count(models.TeaPlan.id).label("count")
+    ).filter(models.TeaPlan.tea_category.isnot(None), models.TeaPlan.tea_category != '') \
+     .group_by(models.TeaPlan.tea_category).all()
+    
     total_orders = db.query(models.TeaPlan).count()
     total_revenue = db.query(func.sum(models.TeaPlan.total_price)).scalar() or 0
     avg_rating = db.query(func.avg(models.ActivityReview.rating)).scalar() or 0
@@ -322,6 +336,8 @@ def get_statistics(db: Session):
         "damage_stats": [{"utensil_name": n, "category": c, "damage_count": d, "damage_rate": float(r or 0)} for n, c, d, r in damage_stats],
         "price_range_stats": price_range_stats,
         "repeat_type_stats": [{"tea_type": t, "count": c} for t, c in repeat_type_stats],
+        "color_reservation_stats": [{"theme_color": c, "count": n} for c, n in color_reservation_stats],
+        "tea_category_reservation_stats": [{"tea_category": t, "count": n} for t, n in tea_category_reservation_stats],
         "total_orders": total_orders,
         "total_revenue": float(total_revenue),
         "avg_rating": float(avg_rating)
