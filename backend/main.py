@@ -82,15 +82,83 @@ def read_tea_plan(plan_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Tea plan not found")
     return db_plan
 
+@app.get("/api/schedule-occupancy", response_model=schemas.ScheduleOccupancyResponse, tags=["预约管理"])
+def get_schedule_occupancy(
+    start_date: str,
+    end_date: str,
+    only_conflicts: bool = False,
+    db: Session = Depends(get_db)
+):
+    parsed_start = parse_date(start_date)
+    parsed_end = parse_date(end_date)
+    result = crud.get_schedule_occupancy(
+        db, start_date=parsed_start, end_date=parsed_end, only_conflicts=only_conflicts
+    )
+    serializable_days = []
+    for day in result['days']:
+        day_dict = dict(day)
+        day_dict['date'] = str(day_dict['date'])
+        for slot in ['morning', 'afternoon', 'evening', 'full_day']:
+            for item in day_dict[slot]:
+                item['date'] = str(item['date'])
+        serializable_days.append(day_dict)
+    return {
+        "start_date": str(result['start_date']),
+        "end_date": str(result['end_date']),
+        "total_occupied": result['total_occupied'],
+        "total_conflicts": result['total_conflicts'],
+        "days": serializable_days
+    }
+
 @app.post("/api/tea-plans", response_model=schemas.TeaPlan, tags=["茶席方案"])
 def create_tea_plan(plan: schemas.TeaPlanCreate, db: Session = Depends(get_db)):
+    conflicts = crud.check_conflict(
+        db, check_date=plan.date, time_slot=plan.time_slot
+    )
+    if len(conflicts) > 0:
+        serializable_conflicts = []
+        for c in conflicts:
+            c_dict = dict(c)
+            c_dict['date'] = str(c_dict['date'])
+            serializable_conflicts.append(c_dict)
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "该日期时段已有活动安排，请选择其他时段",
+                "conflicts": serializable_conflicts
+            }
+        )
     return crud.create_tea_plan(db=db, plan=plan)
 
 @app.put("/api/tea-plans/{plan_id}", response_model=schemas.TeaPlan, tags=["茶席方案"])
 def update_tea_plan(plan_id: int, plan: schemas.TeaPlanUpdate, db: Session = Depends(get_db)):
-    db_plan = crud.update_tea_plan(db, plan_id=plan_id, plan=plan)
+    db_plan = crud.get_tea_plan(db, plan_id=plan_id)
     if db_plan is None:
         raise HTTPException(status_code=404, detail="Tea plan not found")
+    
+    check_date = plan.date if plan.date is not None else db_plan.date
+    check_time_slot = plan.time_slot if plan.time_slot is not None else db_plan.time_slot
+    
+    if plan.date is not None or plan.time_slot is not None:
+        conflicts = crud.check_conflict(
+            db, check_date=check_date, time_slot=check_time_slot,
+            exclude_plan_id=plan_id
+        )
+        if len(conflicts) > 0:
+            serializable_conflicts = []
+            for c in conflicts:
+                c_dict = dict(c)
+                c_dict['date'] = str(c_dict['date'])
+                serializable_conflicts.append(c_dict)
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "message": "该日期时段已有活动安排，请选择其他时段",
+                    "conflicts": serializable_conflicts
+                }
+            )
+    
+    db_plan = crud.update_tea_plan(db, plan_id=plan_id, plan=plan)
     return db_plan
 
 @app.post("/api/tea-plans/{plan_id}/regenerate", response_model=schemas.TeaPlan, tags=["茶席方案"])

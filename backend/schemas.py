@@ -338,6 +338,32 @@ class ReservationStatsResponse(BaseModel):
     popular_tea_stats: List[TeaCategoryReservationStats]
     popular_color_stats: List[ColorReservationStats]
 
+class ScheduleOccupancyItem(BaseModel):
+    id: str
+    date: date
+    time_slot: str
+    source_type: str
+    source_name: str
+    customer_name: str
+    business_type: str
+    status: str
+    related_id: Optional[int] = None
+
+class ScheduleOccupancyDay(BaseModel):
+    date: date
+    has_conflict: bool
+    morning: List[ScheduleOccupancyItem] = []
+    afternoon: List[ScheduleOccupancyItem] = []
+    evening: List[ScheduleOccupancyItem] = []
+    full_day: List[ScheduleOccupancyItem] = []
+
+class ScheduleOccupancyResponse(BaseModel):
+    start_date: date
+    end_date: date
+    total_occupied: int
+    total_conflicts: int
+    days: List[ScheduleOccupancyDay] = []
+
 class StatisticsResponse(BaseModel):
     theme_stats: List[ThemeStats]
     utensil_usage_stats: List[UtensilUsageStats]

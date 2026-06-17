@@ -3,7 +3,7 @@
     <div class="page-header">
       <h2>📅 预约排期管理</h2>
       <div style="display: flex; gap: 10px">
-        <el-radio-group v-model="viewMode" size="default">
+        <el-radio-group v-model="viewMode" size="default" @change="onViewModeChange">
           <el-radio-button value="calendar">
             <el-icon><Calendar /></el-icon>
             日历视图
@@ -11,6 +11,10 @@
           <el-radio-button value="list">
             <el-icon><List /></el-icon>
             列表视图
+          </el-radio-button>
+          <el-radio-button value="schedule">
+            <el-icon><Grid /></el-icon>
+            档期占用总览
           </el-radio-button>
         </el-radio-group>
         <el-button type="primary" class="chinese-btn" @click="openCreateDialog()">
@@ -29,10 +33,10 @@
           start-placeholder="开始日期"
           end-placeholder="结束日期"
           style="width: 100%"
-          @change="loadReservations"
+          @change="onFilterChange"
         />
       </el-col>
-      <el-col :span="4">
+      <el-col v-if="viewMode !== 'schedule'" :span="4">
         <el-select v-model="filterStatus" placeholder="预约状态" clearable style="width: 100%" @change="loadReservations">
           <el-option label="待确认" value="pending" />
           <el-option label="已确认" value="confirmed" />
@@ -40,18 +44,24 @@
           <el-option label="已转化" value="converted" />
         </el-select>
       </el-col>
-      <el-col :span="4">
+      <el-col v-if="viewMode !== 'schedule'" :span="4">
         <el-select v-model="filterTea" placeholder="茶类" clearable style="width: 100%" @change="loadReservations">
           <el-option v-for="tea in TEA_CATEGORIES" :key="tea" :label="tea" :value="tea" />
         </el-select>
       </el-col>
-      <el-col :span="4">
+      <el-col v-if="viewMode !== 'schedule'" :span="4">
         <el-select v-model="filterColor" placeholder="主题色" clearable style="width: 100%" @change="loadReservations">
           <el-option v-for="color in COLORS" :key="color" :label="color" :value="color">
             <span class="color-dot" :style="{ background: getColorHex(color) }"></span>
             <span style="margin-left: 8px">{{ color }}</span>
           </el-option>
         </el-select>
+      </el-col>
+      <el-col v-if="viewMode === 'schedule'" :span="4">
+        <el-checkbox v-model="onlyConflicts" @change="loadScheduleOccupancy">
+          <el-icon style="color: #f56c6c"><Warning /></el-icon>
+          仅看冲突/占用档期
+        </el-checkbox>
       </el-col>
       <el-col :span="6" style="text-align: right">
         <el-button @click="resetFilters">
@@ -60,6 +70,176 @@
         </el-button>
       </el-col>
     </el-row>
+
+    <div v-if="viewMode === 'schedule'" class="schedule-container card-shadow">
+      <div v-if="scheduleData" class="schedule-summary">
+        <el-row :gutter="20">
+          <el-col :span="8">
+            <div class="summary-card">
+              <div class="summary-label">查询日期范围</div>
+              <div class="summary-value">{{ scheduleData.start_date }} 至 {{ scheduleData.end_date }}</div>
+            </div>
+          </el-col>
+          <el-col :span="8">
+            <div class="summary-card">
+              <div class="summary-label">已占用天数</div>
+              <div class="summary-value" style="color: #409eff">{{ scheduleData.total_occupied }} 天</div>
+            </div>
+          </el-col>
+          <el-col :span="8">
+            <div class="summary-card conflict-card">
+              <div class="summary-label">冲突天数</div>
+              <div class="summary-value" style="color: #f56c6c">{{ scheduleData.total_conflicts }} 天</div>
+            </div>
+          </el-col>
+        </el-row>
+      </div>
+
+      <div v-if="scheduleData?.days?.length > 0" class="schedule-list">
+        <div v-for="day in scheduleData.days" :key="day.date" class="schedule-day-card" :class="{ 'conflict-day': day.has_conflict }">
+          <div class="day-header">
+            <div class="day-date">
+              <span class="day-week">{{ getWeekDay(day.date) }}</span>
+              <span class="day-number">{{ formatDayDate(day.date) }}</span>
+            </div>
+            <div class="day-badges">
+              <el-tag v-if="day.has_conflict" type="danger" size="small">
+                <el-icon><Warning /></el-icon>
+                时段冲突
+              </el-tag>
+              <el-tag v-else type="success" size="small" style="margin-left: 8px">
+                已占用
+              </el-tag>
+            </div>
+          </div>
+          <el-row :gutter="16" class="day-slots">
+            <el-col :span="6" class="slot-column">
+              <div class="slot-header morning-header">
+                <el-icon><Sunrise /></el-icon>
+                上午
+              </div>
+              <div v-if="day.morning.length + day.full_day.length === 0" class="slot-empty">空闲</div>
+              <div v-else>
+                <div v-for="item in day.full_day" :key="'f'+item.id" class="occupancy-item full-day-item" :class="getOccupancyClass(item)">
+                  <div class="item-tag" :class="getTagClass(item)">
+                    {{ item.business_type }}
+                  </div>
+                  <div class="item-name">{{ item.source_name }}</div>
+                  <div class="item-customer">{{ item.customer_name }}</div>
+                  <div class="item-status">
+                    <el-tag :type="getStatusTagType(item.source_type, item.status)" size="small">
+                      {{ getStatusText(item.source_type, item.status) }}
+                    </el-tag>
+                  </div>
+                </div>
+                <div v-for="item in day.morning" :key="item.id" class="occupancy-item" :class="getOccupancyClass(item)">
+                  <div class="item-tag" :class="getTagClass(item)">
+                    {{ item.business_type }}
+                  </div>
+                  <div class="item-name">{{ item.source_name }}</div>
+                  <div class="item-customer">{{ item.customer_name }}</div>
+                  <div class="item-status">
+                    <el-tag :type="getStatusTagType(item.source_type, item.status)" size="small">
+                      {{ getStatusText(item.source_type, item.status) }}
+                    </el-tag>
+                  </div>
+                </div>
+              </div>
+            </el-col>
+            <el-col :span="6" class="slot-column">
+              <div class="slot-header afternoon-header">
+                <el-icon><Sunny /></el-icon>
+                下午
+              </div>
+              <div v-if="day.afternoon.length + day.full_day.length === 0" class="slot-empty">空闲</div>
+              <div v-else>
+                <div v-for="item in day.full_day" :key="'f2'+item.id" class="occupancy-item full-day-item" :class="getOccupancyClass(item)">
+                  <div class="item-tag" :class="getTagClass(item)">
+                    {{ item.business_type }}
+                  </div>
+                  <div class="item-name">{{ item.source_name }}</div>
+                  <div class="item-customer">{{ item.customer_name }}</div>
+                  <div class="item-status">
+                    <el-tag :type="getStatusTagType(item.source_type, item.status)" size="small">
+                      {{ getStatusText(item.source_type, item.status) }}
+                    </el-tag>
+                  </div>
+                </div>
+                <div v-for="item in day.afternoon" :key="item.id" class="occupancy-item" :class="getOccupancyClass(item)">
+                  <div class="item-tag" :class="getTagClass(item)">
+                    {{ item.business_type }}
+                  </div>
+                  <div class="item-name">{{ item.source_name }}</div>
+                  <div class="item-customer">{{ item.customer_name }}</div>
+                  <div class="item-status">
+                    <el-tag :type="getStatusTagType(item.source_type, item.status)" size="small">
+                      {{ getStatusText(item.source_type, item.status) }}
+                    </el-tag>
+                  </div>
+                </div>
+              </div>
+            </el-col>
+            <el-col :span="6" class="slot-column">
+              <div class="slot-header evening-header">
+                <el-icon><Moon /></el-icon>
+                晚上
+              </div>
+              <div v-if="day.evening.length + day.full_day.length === 0" class="slot-empty">空闲</div>
+              <div v-else>
+                <div v-for="item in day.full_day" :key="'f3'+item.id" class="occupancy-item full-day-item" :class="getOccupancyClass(item)">
+                  <div class="item-tag" :class="getTagClass(item)">
+                    {{ item.business_type }}
+                  </div>
+                  <div class="item-name">{{ item.source_name }}</div>
+                  <div class="item-customer">{{ item.customer_name }}</div>
+                  <div class="item-status">
+                    <el-tag :type="getStatusTagType(item.source_type, item.status)" size="small">
+                      {{ getStatusText(item.source_type, item.status) }}
+                    </el-tag>
+                  </div>
+                </div>
+                <div v-for="item in day.evening" :key="item.id" class="occupancy-item" :class="getOccupancyClass(item)">
+                  <div class="item-tag" :class="getTagClass(item)">
+                    {{ item.business_type }}
+                  </div>
+                  <div class="item-name">{{ item.source_name }}</div>
+                  <div class="item-customer">{{ item.customer_name }}</div>
+                  <div class="item-status">
+                    <el-tag :type="getStatusTagType(item.source_type, item.status)" size="small">
+                      {{ getStatusText(item.source_type, item.status) }}
+                    </el-tag>
+                  </div>
+                </div>
+              </div>
+            </el-col>
+            <el-col :span="6" class="slot-column">
+              <div class="slot-header fullday-header">
+                <el-icon><Clock /></el-icon>
+                全天占用
+              </div>
+              <div v-if="day.full_day.length === 0" class="slot-empty">无全天安排</div>
+              <div v-else>
+                <div v-for="item in day.full_day" :key="'f4'+item.id" class="occupancy-item" :class="getOccupancyClass(item)">
+                  <div class="item-tag" :class="getTagClass(item)">
+                    {{ item.business_type }}
+                  </div>
+                  <div class="item-name">{{ item.source_name }}</div>
+                  <div class="item-customer">{{ item.customer_name }}</div>
+                  <div class="item-status">
+                    <el-tag :type="getStatusTagType(item.source_type, item.status)" size="small">
+                      {{ getStatusText(item.source_type, item.status) }}
+                    </el-tag>
+                  </div>
+                </div>
+              </div>
+            </el-col>
+          </el-row>
+        </div>
+      </div>
+      <div v-else-if="scheduleData" class="no-data-tip">
+        <el-empty description="所选日期范围内暂无档期占用数据" />
+      </div>
+    </div>
 
     <div v-if="viewMode === 'calendar'" class="calendar-container card-shadow">
       <div class="calendar-header">
@@ -331,18 +511,20 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Refresh, Calendar, List, ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
+import { Plus, Refresh, Calendar, List, ArrowLeft, ArrowRight, Grid, Warning, Sunrise, Sunny, Moon, Clock } from '@element-plus/icons-vue'
 import { reservationApi, themeApi } from '@/api'
 import { TEA_CATEGORIES, COLORS, PHOTO_STYLES, TIME_SLOTS } from '@/types'
-import type { Reservation, Theme, ConflictCheckResponse } from '@/types'
+import type { Reservation, Theme, ConflictCheckResponse, ScheduleOccupancyResponse, ScheduleOccupancyItem } from '@/types'
 
 const reservations = ref<Reservation[]>([])
 const themes = ref<Theme[]>([])
-const viewMode = ref<'calendar' | 'list'>('calendar')
+const viewMode = ref<'calendar' | 'list' | 'schedule'>('calendar')
 const dateRange = ref<string[]>([])
 const filterStatus = ref('')
 const filterTea = ref('')
 const filterColor = ref('')
+const onlyConflicts = ref(false)
+const scheduleData = ref<ScheduleOccupancyResponse | null>(null)
 
 const currentDate = new Date()
 const currentYear = ref(currentDate.getFullYear())
@@ -505,12 +687,107 @@ const goToToday = () => {
   currentMonth.value = today.getMonth() + 1
 }
 
+const getWeekDay = (dateStr: string): string => {
+  const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+  const date = new Date(dateStr)
+  return weekdays[date.getDay()]
+}
+
+const formatDayDate = (dateStr: string): string => {
+  const date = new Date(dateStr)
+  return `${date.getMonth() + 1}月${date.getDate()}日`
+}
+
+const getOccupancyClass = (item: ScheduleOccupancyItem): string => {
+  return `occupancy-${item.source_type}`
+}
+
+const getTagClass = (item: ScheduleOccupancyItem): string => {
+  return item.source_type === 'plan' ? 'tag-plan' : 'tag-reservation'
+}
+
+const getStatusTagType = (sourceType: string, status: string): string => {
+  if (sourceType === 'reservation') {
+    const map: Record<string, string> = {
+      pending: 'warning',
+      confirmed: 'success',
+      cancelled: 'danger',
+      converted: 'info'
+    }
+    return map[status] || ''
+  } else {
+    const map: Record<string, string> = {
+      draft: 'info',
+      confirmed: 'success',
+      borrowing: 'warning',
+      completed: ''
+    }
+    return map[status] || ''
+  }
+}
+
+const getScheduleStatusText = (sourceType: string, status: string): string => {
+  if (sourceType === 'reservation') {
+    return getStatusText(status)
+  } else {
+    return getPlanStatusText(status)
+  }
+}
+
+const onViewModeChange = () => {
+  if (viewMode.value === 'schedule') {
+    loadScheduleOccupancy()
+  } else {
+    loadReservations()
+  }
+}
+
+const onFilterChange = () => {
+  if (viewMode.value === 'schedule') {
+    loadScheduleOccupancy()
+  } else {
+    loadReservations()
+  }
+}
+
+const loadScheduleOccupancy = async () => {
+  try {
+    let startDate = ''
+    let endDate = ''
+    
+    if (dateRange.value.length === 2) {
+      startDate = dateRange.value[0]
+      endDate = dateRange.value[1]
+    } else {
+      const today = new Date()
+      const firstDay = new Date(today.getFullYear(), today.getMonth(), 1)
+      const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0)
+      startDate = formatDate(firstDay)
+      endDate = formatDate(lastDay)
+    }
+    
+    const res = await reservationApi.getScheduleOccupancy({
+      start_date: startDate,
+      end_date: endDate,
+      only_conflicts: onlyConflicts.value
+    })
+    scheduleData.value = res.data
+  } catch (e) {
+    ElMessage.error('加载档期占用数据失败')
+  }
+}
+
 const resetFilters = () => {
   dateRange.value = []
   filterStatus.value = ''
   filterTea.value = ''
   filterColor.value = ''
-  loadReservations()
+  onlyConflicts.value = false
+  if (viewMode.value === 'schedule') {
+    loadScheduleOccupancy()
+  } else {
+    loadReservations()
+  }
 }
 
 const checkConflict = async () => {
@@ -733,7 +1010,11 @@ const loadThemes = async () => {
 }
 
 onMounted(() => {
-  loadReservations()
+  if (viewMode.value === 'schedule') {
+    loadScheduleOccupancy()
+  } else {
+    loadReservations()
+  }
   loadThemes()
 })
 
@@ -946,5 +1227,213 @@ watch(
 
 .status-completed {
   background: #5cb85c;
+}
+
+.schedule-container {
+  padding: 20px;
+  background: #fff;
+  border-radius: 8px;
+}
+
+.schedule-summary {
+  margin-bottom: 20px;
+}
+
+.summary-card {
+  padding: 15px;
+  background: linear-gradient(135deg, #fff9f0 0%, #fff5e6 100%);
+  border: 1px solid #e8dcc8;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.summary-card.conflict-card {
+  background: linear-gradient(135deg, #fff5f5 0%, #ffe8e8 100%);
+  border-color: #f5c6c6;
+}
+
+.summary-label {
+  font-size: 13px;
+  color: #8B7355;
+  margin-bottom: 5px;
+}
+
+.summary-value {
+  font-size: 20px;
+  font-weight: bold;
+  color: #8B4513;
+}
+
+.schedule-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.schedule-day-card {
+  border: 1px solid #e8dcc8;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fffef8;
+}
+
+.schedule-day-card.conflict-day {
+  border-color: #f56c6c;
+  box-shadow: 0 0 0 2px rgba(245, 108, 108, 0.1);
+}
+
+.day-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  background: linear-gradient(135deg, #faf5eb 0%, #f5ede0 100%);
+  border-bottom: 1px solid #e8dcc8;
+}
+
+.schedule-day-card.conflict-day .day-header {
+  background: linear-gradient(135deg, #fff5f5 0%, #ffecec 100%);
+  border-bottom-color: #f5c6c6;
+}
+
+.day-date {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.day-week {
+  font-size: 14px;
+  color: #8B7355;
+  font-weight: 500;
+}
+
+.day-number {
+  font-size: 18px;
+  font-weight: bold;
+  color: #8B4513;
+}
+
+.day-badges {
+  display: flex;
+  gap: 8px;
+}
+
+.day-slots {
+  padding: 16px;
+}
+
+.slot-column {
+  display: flex;
+  flex-direction: column;
+}
+
+.slot-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  font-weight: bold;
+  border-radius: 6px;
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+
+.morning-header {
+  background: linear-gradient(135deg, #fff4e0 0%, #ffe8c5 100%);
+  color: #b8860b;
+}
+
+.afternoon-header {
+  background: linear-gradient(135deg, #e6f3ff 0%, #cce7ff 100%);
+  color: #409eff;
+}
+
+.evening-header {
+  background: linear-gradient(135deg, #f0e6ff 0%, #e0ccff 100%);
+  color: #909399;
+}
+
+.fullday-header {
+  background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+  color: #67c23a;
+}
+
+.slot-empty {
+  padding: 20px;
+  text-align: center;
+  color: #c0b49e;
+  font-size: 13px;
+  background: #faf7f0;
+  border-radius: 6px;
+  border: 1px dashed #e0d5c0;
+}
+
+.occupancy-item {
+  padding: 12px;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  border: 1px solid #e8dcc8;
+  background: #fff;
+  transition: all 0.2s;
+}
+
+.occupancy-item:hover {
+  box-shadow: 0 2px 8px rgba(139, 69, 19, 0.1);
+  transform: translateY(-1px);
+}
+
+.occupancy-item.full-day-item {
+  border-left: 3px solid #67c23a;
+}
+
+.occupancy-item.occupancy-plan {
+  background: linear-gradient(135deg, #f0f9ff 0%, #e6f7ff 100%);
+  border-color: #91d5ff;
+}
+
+.occupancy-item.occupancy-reservation {
+  background: linear-gradient(135deg, #fff7e6 0%, #fff1cc 100%);
+  border-color: #ffd591;
+}
+
+.item-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: bold;
+  margin-bottom: 6px;
+}
+
+.item-tag.tag-plan {
+  background: #1890ff;
+  color: #fff;
+}
+
+.item-tag.tag-reservation {
+  background: #fa8c16;
+  color: #fff;
+}
+
+.item-name {
+  font-size: 14px;
+  font-weight: bold;
+  color: #5c4033;
+  margin-bottom: 4px;
+}
+
+.item-customer {
+  font-size: 12px;
+  color: #8B7355;
+  margin-bottom: 6px;
+}
+
+.item-status {
+  font-size: 12px;
+}
+
+.no-data-tip {
+  padding: 60px 0;
 }
 </style>

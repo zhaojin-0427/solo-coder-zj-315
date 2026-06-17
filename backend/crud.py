@@ -567,6 +567,106 @@ def convert_reservation_to_plan(db: Session, reservation_id: int, convert_reques
     
     return db_plan
 
+def get_schedule_occupancy(db: Session, start_date: date, end_date: date, only_conflicts: bool = False):
+    from datetime import timedelta
+    
+    days = []
+    total_occupied = 0
+    total_conflicts = 0
+    
+    current_date = start_date
+    while current_date <= end_date:
+        day_data = {
+            "date": current_date,
+            "has_conflict": False,
+            "morning": [],
+            "afternoon": [],
+            "evening": [],
+            "full_day": []
+        }
+        
+        all_items = []
+        
+        plan_conflicts = db.query(models.TeaPlan).filter(
+            models.TeaPlan.date == current_date,
+            models.TeaPlan.status.in_(["confirmed", "borrowing", "completed"])
+        ).all()
+        
+        for plan in plan_conflicts:
+            item = {
+                "id": f"plan_{plan.id}",
+                "date": plan.date,
+                "time_slot": plan.time_slot,
+                "source_type": "plan",
+                "source_name": plan.name,
+                "customer_name": plan.customer_name,
+                "business_type": "茶席方案",
+                "status": plan.status,
+                "related_id": plan.reservation_id
+            }
+            all_items.append(item)
+        
+        reservation_conflicts = db.query(models.Reservation).filter(
+            models.Reservation.expected_date == current_date,
+            models.Reservation.status.in_(["pending", "confirmed", "converted"])
+        ).all()
+        
+        for res in reservation_conflicts:
+            item = {
+                "id": f"reservation_{res.id}",
+                "date": res.expected_date,
+                "time_slot": res.time_slot,
+                "source_type": "reservation",
+                "source_name": f"客户预约",
+                "customer_name": res.customer_name,
+                "business_type": "预约",
+                "status": res.status,
+                "related_id": None
+            }
+            all_items.append(item)
+        
+        for item in all_items:
+            slot = item["time_slot"]
+            if slot == "上午":
+                day_data["morning"].append(item)
+            elif slot == "下午":
+                day_data["afternoon"].append(item)
+            elif slot == "晚上":
+                day_data["evening"].append(item)
+            elif slot == "全天":
+                day_data["full_day"].append(item)
+        
+        slot_groups = {
+            "morning": day_data["morning"] + day_data["full_day"],
+            "afternoon": day_data["afternoon"] + day_data["full_day"],
+            "evening": day_data["evening"] + day_data["full_day"]
+        }
+        
+        for slot_name, items in slot_groups.items():
+            if len(items) > 1:
+                day_data["has_conflict"] = True
+                break
+        
+        if day_data["has_conflict"]:
+            total_conflicts += 1
+        
+        day_count = len(all_items)
+        if day_count > 0:
+            total_occupied += 1
+        
+        if not only_conflicts or day_data["has_conflict"] or day_count > 0:
+            days.append(day_data)
+        
+        current_date += timedelta(days=1)
+    
+    return {
+        "start_date": start_date,
+        "end_date": end_date,
+        "total_occupied": total_occupied,
+        "total_conflicts": total_conflicts,
+        "days": days
+    }
+
 def get_reservation_statistics(db: Session):
     total_reservations = db.query(models.Reservation).count()
     confirmed_reservations = db.query(models.Reservation).filter(

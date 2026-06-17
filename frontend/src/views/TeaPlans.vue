@@ -112,15 +112,34 @@
           <el-row :gutter="20">
             <el-col :span="12">
               <el-form-item label="活动日期" required>
-                <el-date-picker v-model="formData.date" type="date" style="width: 100%" />
+                <el-date-picker v-model="formData.date" type="date" style="width: 100%" @change="checkPlanConflict" />
               </el-form-item>
             </el-col>
+            <el-col :span="12">
+              <el-form-item label="时段" required>
+                <el-select v-model="formData.time_slot" style="width: 100%" @change="checkPlanConflict">
+                  <el-option v-for="slot in TIME_SLOTS" :key="slot" :label="slot" :value="slot" />
+                </el-select>
+              </el-form-item>
+            </el-col>
+          </el-row>
+          <el-row :gutter="20">
             <el-col :span="12">
               <el-form-item label="参与人数" required>
                 <el-input-number v-model="formData.people_count" :min="1" :max="20" style="width: 100%" />
               </el-form-item>
             </el-col>
           </el-row>
+          <el-alert v-if="planConflictResult?.has_conflict" type="error" :closable="false" style="margin-bottom: 15px">
+            <template #title>
+              <b>⚠️ 时段冲突警告：</b>该日期时段已有活动安排：
+              <ul style="margin: 10px 0 0 20px">
+                <li v-for="(c, idx) in planConflictResult.conflicts" :key="idx">
+                  [{{ c.time_slot }}] {{ c.type === 'plan' ? '茶席方案' : '预约' }}: {{ c.name }} ({{ c.customer_name }})
+                </li>
+              </ul>
+            </template>
+          </el-alert>
           <el-form-item label="预算" required>
             <el-input-number v-model="formData.budget" :min="100" :max="10000" :step="100" style="width: 100%" />
           </el-form-item>
@@ -231,7 +250,7 @@
       <template #footer>
         <el-button @click="onCancelCreate">取消</el-button>
         <el-button v-if="createStep > 0" @click="createStep--">上一步</el-button>
-        <el-button v-if="createStep === 0" type="primary" class="chinese-btn" @click="fetchPreview" :disabled="!canPreview">
+        <el-button v-if="createStep === 0" type="primary" class="chinese-btn" @click="fetchPreview" :disabled="!canPreview || planConflictResult?.has_conflict">
           预览推荐器物
         </el-button>
         <el-button v-if="createStep === 1" type="primary" class="chinese-btn" @click="createStep = 2" :disabled="selectedPreviewItems.length === 0">
@@ -345,12 +364,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Refresh, Loading, Edit } from '@element-plus/icons-vue'
-import { teaPlanApi, themeApi, borrowListApi, recommendApi } from '@/api'
-import { PHOTO_STYLES, TEA_CATEGORIES, COLORS } from '@/types'
-import type { TeaPlan, Theme, RecommendationItem } from '@/types'
+import { teaPlanApi, themeApi, borrowListApi, recommendApi, reservationApi } from '@/api'
+import { PHOTO_STYLES, TEA_CATEGORIES, COLORS, TIME_SLOTS } from '@/types'
+import type { TeaPlan, Theme, RecommendationItem, ConflictCheckResponse } from '@/types'
 
 const plans = ref<TeaPlan[]>([])
 const themes = ref<Theme[]>([])
@@ -369,11 +388,20 @@ const isEditingPlan = ref(false)
 const planItemsTable = ref()
 const selectedPlanItems = ref<any[]>([])
 const originalPlanItems = ref<any[]>([])
+const planConflictResult = ref<ConflictCheckResponse | null>(null)
+
+const formatDate = (date: Date): string => {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
 
 const formData = ref({
   name: '',
   theme_id: 0,
   date: '',
+  time_slot: '全天',
   people_count: 4,
   budget: 1000,
   photo_style: '宋韵古风',
@@ -395,8 +423,27 @@ const selectedThemeName = computed(() => {
 })
 
 const canPreview = computed(() => {
-  return formData.value.theme_color && formData.value.tea_category && formData.value.people_count > 0 && formData.value.budget > 0 && formData.value.photo_style
+  return formData.value.theme_color && formData.value.tea_category && formData.value.people_count > 0 && formData.value.budget > 0 && formData.value.photo_style && formData.value.date && formData.value.time_slot
 })
+
+const checkPlanConflict = async () => {
+  if (!formData.value.date || !formData.value.time_slot) {
+    planConflictResult.value = null
+    return
+  }
+  try {
+    const dateStr = formData.value.date instanceof Date
+      ? formatDate(formData.value.date)
+      : formData.value.date
+    const res = await reservationApi.checkConflict({
+      check_date: dateStr,
+      time_slot: formData.value.time_slot
+    })
+    planConflictResult.value = res.data
+  } catch (e) {
+    planConflictResult.value = null
+  }
+}
 
 const selectedPreviewItems = computed(() => selectedPreviewRows.value.length > 0 ? selectedPreviewRows.value : previewItems.value.filter(i => i.selected))
 
@@ -536,6 +583,11 @@ const createPlan = async () => {
     ElMessage.warning('请至少选择一件推荐器物')
     return
   }
+  if (planConflictResult.value?.has_conflict) {
+    ElMessage.error('该日期时段已有活动安排，请选择其他时段')
+    createStep.value = 0
+    return
+  }
   try {
     const selected_items = previewItems.value.map(item => ({
       utensil_id: item.utensil.id,
@@ -550,8 +602,25 @@ const createPlan = async () => {
     showCreateDialog.value = false
     resetForm()
     loadPlans()
-  } catch (e) {
-    ElMessage.error('创建方案失败')
+  } catch (e: any) {
+    if (e?.response?.status === 409) {
+      const detail = e.response.data?.detail
+      if (detail && typeof detail === 'object' && detail.conflicts) {
+        planConflictResult.value = {
+          has_conflict: true,
+          conflicts: detail.conflicts
+        }
+        const conflictMsgs = detail.conflicts.map((c: any) =>
+          `[${c.time_slot}] ${c.type === 'plan' ? '茶席方案' : '预约'}: ${c.name} (${c.customer_name || ''})`
+        ).join('\n')
+        ElMessage.error(`${detail.message || '时段冲突，无法创建'}\n${conflictMsgs}`)
+        createStep.value = 0
+      } else {
+        ElMessage.error('时段冲突，无法创建')
+      }
+    } else {
+      ElMessage.error('创建方案失败')
+    }
   }
 }
 
@@ -560,6 +629,7 @@ const resetForm = () => {
     name: '',
     theme_id: 0,
     date: '',
+    time_slot: '全天',
     people_count: 4,
     budget: 1000,
     photo_style: '宋韵古风',
@@ -572,7 +642,18 @@ const resetForm = () => {
   previewItems.value = []
   selectedPreviewRows.value = []
   createStep.value = 0
+  planConflictResult.value = null
 }
+
+watch(
+  () => [formData.value.date, formData.value.time_slot, showCreateDialog.value],
+  ([newDate, newSlot, dialogOpen]) => {
+    if (dialogOpen && newDate && newSlot && createStep.value === 0) {
+      checkPlanConflict()
+    }
+  },
+  { deep: true }
+)
 
 const viewPlan = async (row: TeaPlan) => {
   try {

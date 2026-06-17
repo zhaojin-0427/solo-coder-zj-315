@@ -202,6 +202,35 @@ export interface ReservationStatsResponse {
   popular_color_stats: ColorReservationStats[]
 }
 
+export interface ScheduleOccupancyItem {
+  id: string
+  date: string
+  time_slot: string
+  source_type: string
+  source_name: string
+  customer_name: string
+  business_type: string
+  status: string
+  related_id?: number
+}
+
+export interface ScheduleOccupancyDay {
+  date: string
+  has_conflict: boolean
+  morning: ScheduleOccupancyItem[]
+  afternoon: ScheduleOccupancyItem[]
+  evening: ScheduleOccupancyItem[]
+  full_day: ScheduleOccupancyItem[]
+}
+
+export interface ScheduleOccupancyResponse {
+  start_date: string
+  end_date: string
+  total_occupied: number
+  total_conflicts: number
+  days: ScheduleOccupancyDay[]
+}
+
 export const TEA_CATEGORIES = ['绿茶', '红茶', '乌龙茶', '普洱茶', '白茶', '黄茶']
 export const PHOTO_STYLES = ['宋韵古风', '禅意极简', '文人雅集', '现代新中式', '自然山野']
 export const UTENSIL_CATEGORIES = ['盖碗', '茶海', '杯盏', '席布', '花器']

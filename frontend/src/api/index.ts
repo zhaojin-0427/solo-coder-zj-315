@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { Theme, Utensil, TeaPlan, BorrowList, ActivityReview, StatisticsResponse, SelectedItem, Reservation, ConflictCheckResponse } from '@/types'
+import type { Theme, Utensil, TeaPlan, BorrowList, ActivityReview, StatisticsResponse, SelectedItem, Reservation, ConflictCheckResponse, ScheduleOccupancyResponse } from '@/types'
 
 const api = axios.create({
   baseURL: '/api',
@@ -96,6 +96,8 @@ export const reservationApi = {
   getOne: (id: number) => api.get<Reservation>(`/reservations/${id}`),
   checkConflict: (params: { check_date: string; time_slot: string; exclude_reservation_id?: number; exclude_plan_id?: number }) =>
     api.get<ConflictCheckResponse>('/reservations/check-conflict', { params }),
+  getScheduleOccupancy: (params: { start_date: string; end_date: string; only_conflicts?: boolean }) =>
+    api.get<ScheduleOccupancyResponse>('/schedule-occupancy', { params }),
   create: (data: Omit<Reservation, 'id' | 'plans'>) => api.post<Reservation>('/reservations', data),
   update: (id: number, data: Partial<Omit<Reservation, 'id' | 'plans'>>) => api.put<Reservation>(`/reservations/${id}`, data),
   confirm: (id: number) => api.post<Reservation>(`/reservations/${id}/confirm`),
